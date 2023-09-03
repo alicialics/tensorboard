@@ -17,9 +17,7 @@ tf_ts_library(
     name = "tfjs",
     srcs = ["tfjs.ts"],
     deps = [
-        "@npm//@tensorflow/tfjs-backend-cpu",
-        "@npm//@tensorflow/tfjs-backend-webgl",
-        "@npm//@tensorflow/tfjs-core",
+        "@npm//@tensorflow/tfjs",
     ],
 )
 

@@ -85,7 +85,7 @@ tf_ts_library(
     name = "bh_tsne",
     srcs = ["bh_tsne.ts"],
     strict_checks = False,
-    deps = [":sptree"],
+    deps = [":sptree", "@npm//tfjs-tsne"],
 )
 
 ################# Standalone development #################

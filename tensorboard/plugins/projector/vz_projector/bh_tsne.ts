@@ -23,6 +23,7 @@ limitations under the License.
  */
 
 import {SPNode, SPTree} from './sptree';
+import {TSNEOptimizer} from 'tfjs-tsne';
 
 type AugmSPNode = SPNode & {
   numCells: number;
@@ -256,6 +257,7 @@ export class TSNE {
     pointA: number[],
     pointB: number[]
   ) => void;
+  private optimizer: TSNEOptimizer | null;
   constructor(opt: TSNEOptions) {
     opt = opt || {dim: 2};
     this.perplexity = opt.perplexity || 30;
@@ -285,7 +287,31 @@ export class TSNE {
     this.nearest = nearest;
     this.P = nearest2P(nearest, this.perplexity, 0.0001);
     this.N = N;
-    this.initSolution(); // refresh this
+    if (this.dim === 2) {
+      this.optimizer = new TSNEOptimizer(N, true);
+      if (this.optimizer) {
+        const distances = new Float32Array(nearest.length * nearest[0].length);
+        const indices = new Uint32Array(nearest.length * nearest[0].length);
+        for (let i = 0; i < nearest.length; i++) {
+          for (let j = 0; j < nearest[i].length; j++) {
+            const pt = nearest[i][j];
+            const id = i * nearest[i].length + j;
+            distances[id] = pt.dist;
+            indices[id] = pt.index;
+          }
+        }
+        return this.optimizer.initializeNeighborsFromKNNGraph(
+          N,
+          Math.floor(3 * this.perplexity),
+          distances,
+          indices,
+          this.perplexity
+        );
+      }
+    } else {
+      this.optimizer = null;
+      this.initSolution(); // refresh this
+    }
   }
   // (re)initializes the solution to random
   initSolution() {
@@ -353,6 +379,15 @@ export class TSNE {
       for (let d = 0; d < this.dim; ++d) {
         this.Y[i * this.dim + d] -= ymean[d] / N;
       }
+    }
+  }
+  async iterate() {
+    if (this.optimizer) {
+      await this.optimizer.iterate();
+      return this.optimizer.embedding2D.data();
+    } else {
+      this.step();
+      return this.getSolution();
     }
   }
   // perform a single step of optimization to improve the embedding

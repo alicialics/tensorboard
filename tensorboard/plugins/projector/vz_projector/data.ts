@@ -319,7 +319,7 @@ export class DataSet {
     });
   }
   /** Runs tsne on the data. */
-  projectTSNE(
+  async projectTSNE(
     perplexity: number,
     learningRate: number,
     tsneDim: number,
@@ -335,11 +335,7 @@ export class DataSet {
     this.tSNEShouldStop = false;
     this.tSNEIteration = 0;
     let sampledIndices = this.shuffledDataIndices.slice(0, TSNE_SAMPLE_SIZE);
-    let step = () => {
-      if (!this.tsne.getSolution()) {
-        this.initTsneSolutionFromCurrentProjection();
-        return;
-      }
+    let step = async () => {
       if (this.tSNEShouldStop) {
         this.projections['tsne'] = false;
         stepCallback(null!);
@@ -348,13 +344,13 @@ export class DataSet {
         return;
       }
       if (!this.tSNEShouldPause) {
-        this.tsne.step();
-        let result = this.tsne.getSolution();
-        const d = this.tsne.getDim();
+        const result = await this.tsne.iterate();
         sampledIndices.forEach((index, i) => {
           let dataPoint = this.points[index];
-          for (let j = 0; j < d; j++) {
-            dataPoint.projections[`tsne-${j}`] = result[i * d + j];
+          dataPoint.projections['tsne-0'] = result[i * tsneDim + 0];
+          dataPoint.projections['tsne-1'] = result[i * tsneDim + 1];
+          if (tsneDim === 3) {
+            dataPoint.projections['tsne-2'] = result[i * tsneDim + 2];
           }
         });
         this.projections['tsne'] = true;
@@ -365,10 +361,10 @@ export class DataSet {
     };
     const sampledData = sampledIndices.map((i) => this.points[i]);
     const knnComputation = this.computeKnn(sampledData, k);
-    knnComputation.then((nearest) => {
+    return knnComputation.then((nearest) => {
       util
         .runAsyncTask('Initializing T-SNE...', () => {
-          this.tsne.initDataDist(nearest);
+          return this.tsne.initDataDist(nearest);
         })
         .then(step);
     });
