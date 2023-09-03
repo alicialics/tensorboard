@@ -14,27 +14,35 @@ limitations under the License.
 ==============================================================================*/
 
 import {
+  AfterContentInit,
   ChangeDetectionStrategy,
   Component,
+  ContentChildren,
   EventEmitter,
   Input,
   OnDestroy,
   Output,
+  QueryList,
+  ViewChild,
 } from '@angular/core';
 import {
   ColumnHeader,
   ColumnHeaderType,
-  SelectedStepRunData,
+  DiscreteFilter,
+  DiscreteFilterValue,
+  FilterAddedEvent,
+  IntervalFilter,
   SortingInfo,
   SortingOrder,
-} from '../../metrics/views/card_renderer/scalar_card_types';
-import {
-  intlNumberFormatter,
-  numberFormatter,
-  relativeTimeFormatter,
-} from '../line_chart_v2/lib/formatter';
+} from './types';
+import {HeaderCellComponent} from './header_cell_component';
+import {Subscription} from 'rxjs';
+import {CustomModalComponent} from '../custom_modal/custom_modal_component';
+import {ColumnSelectorComponent} from './column_selector_component';
+import {ContentCellComponent} from './content_cell_component';
+import {RangeValues} from '../range_input/types';
 
-enum Side {
+export enum Side {
   RIGHT,
   LEFT,
 }
@@ -49,212 +57,163 @@ const preventDefault = function (e: MouseEvent) {
   styleUrls: ['data_table_component.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DataTableComponent implements OnDestroy {
+export class DataTableComponent implements OnDestroy, AfterContentInit {
   // The order of this array of headers determines the order which they are
   // displayed in the table.
   @Input() headers!: ColumnHeader[];
-  @Input() data!: SelectedStepRunData[];
   @Input() sortingInfo!: SortingInfo;
   @Input() columnCustomizationEnabled!: boolean;
-  @Input() smoothingEnabled!: boolean;
+  @Input() selectableColumns?: ColumnHeader[];
+  @Input() columnFilters!: Map<string, DiscreteFilter | IntervalFilter>;
+
+  @ContentChildren(HeaderCellComponent)
+  headerCells!: QueryList<HeaderCellComponent>;
+  headerCellSubscriptions: Subscription[] = [];
+  @ContentChildren(ContentCellComponent, {descendants: true})
+  contentCells!: QueryList<ContentCellComponent>;
+  contentCellSubscriptions: Subscription[] = [];
+
+  contextMenuHeader: ColumnHeader | undefined = undefined;
+  insertColumnTo: Side | undefined = undefined;
+  filterColumn: ColumnHeader | undefined = undefined;
 
   @Output() sortDataBy = new EventEmitter<SortingInfo>();
   @Output() orderColumns = new EventEmitter<ColumnHeader[]>();
+  @Output() removeColumn = new EventEmitter<ColumnHeader>();
+  @Output() addColumn = new EventEmitter<{
+    header: ColumnHeader;
+    index?: number | undefined;
+  }>();
+  @Output() addFilter = new EventEmitter<FilterAddedEvent>();
+
+  @ViewChild('columnSelectorModal', {static: false})
+  private readonly columnSelectorModal!: CustomModalComponent;
+
+  @ViewChild(ColumnSelectorComponent, {static: false})
+  private readonly columnSelector!: ColumnSelectorComponent;
+
+  @ViewChild('contextMenu', {static: false})
+  private readonly contextMenu!: CustomModalComponent;
+
+  @ViewChild('filterModal', {static: false})
+  private readonly filterModal!: CustomModalComponent;
 
   readonly ColumnHeaders = ColumnHeaderType;
   readonly SortingOrder = SortingOrder;
   readonly Side = Side;
 
-  draggingHeaderType: ColumnHeaderType | undefined;
-  highlightedColumnType: ColumnHeaderType | undefined;
+  draggingHeaderName: string | undefined;
+  highlightedColumnName: string | undefined;
   highlightSide: Side = Side.RIGHT;
 
   ngOnDestroy() {
     document.removeEventListener('dragover', preventDefault);
+    this.headerCellSubscriptions.forEach((subscription) => {
+      subscription.unsubscribe();
+    });
   }
 
-  getFormattedDataForColumn(
-    columnHeader: ColumnHeaderType,
-    selectedStepRunData: SelectedStepRunData
-  ): string {
-    switch (columnHeader) {
-      case ColumnHeaderType.RUN:
-        if (selectedStepRunData.RUN === undefined) {
-          return '';
-        }
-        return selectedStepRunData.RUN as string;
-      case ColumnHeaderType.VALUE:
-        if (selectedStepRunData.VALUE === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.VALUE as number
-        );
-      case ColumnHeaderType.STEP:
-        if (selectedStepRunData.STEP === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.STEP as number
-        );
-      case ColumnHeaderType.TIME:
-        if (selectedStepRunData.TIME === undefined) {
-          return '';
-        }
-        const time = new Date(selectedStepRunData.TIME!);
-        return time.toISOString();
-      case ColumnHeaderType.RELATIVE_TIME:
-        if (selectedStepRunData.RELATIVE_TIME === undefined) {
-          return '';
-        }
-        return relativeTimeFormatter.formatReadable(
-          selectedStepRunData.RELATIVE_TIME as number
-        );
-      case ColumnHeaderType.SMOOTHED:
-        if (selectedStepRunData.SMOOTHED === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.SMOOTHED as number
-        );
-      case ColumnHeaderType.VALUE_CHANGE:
-        if (selectedStepRunData.VALUE_CHANGE === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          Math.abs(selectedStepRunData.VALUE_CHANGE as number)
-        );
-      case ColumnHeaderType.START_STEP:
-        if (selectedStepRunData.START_STEP === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.START_STEP as number
-        );
-      case ColumnHeaderType.END_STEP:
-        if (selectedStepRunData.END_STEP === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.END_STEP as number
-        );
-      case ColumnHeaderType.START_VALUE:
-        if (selectedStepRunData.START_VALUE === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.START_VALUE as number
-        );
-      case ColumnHeaderType.END_VALUE:
-        if (selectedStepRunData.END_VALUE === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.END_VALUE as number
-        );
-      case ColumnHeaderType.MIN_VALUE:
-        if (selectedStepRunData.MIN_VALUE === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.MIN_VALUE as number
-        );
-      case ColumnHeaderType.MAX_VALUE:
-        if (selectedStepRunData.MAX_VALUE === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.MAX_VALUE as number
-        );
-      case ColumnHeaderType.PERCENTAGE_CHANGE:
-        if (selectedStepRunData.PERCENTAGE_CHANGE === undefined) {
-          return '';
-        }
-        return (
-          Math.round(
-            (selectedStepRunData.PERCENTAGE_CHANGE as number) * 100
-          ).toString() + '%'
-        );
-      case ColumnHeaderType.STEP_AT_MAX:
-        if (selectedStepRunData.STEP_AT_MAX === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.STEP_AT_MAX as number
-        );
-      case ColumnHeaderType.STEP_AT_MIN:
-        if (selectedStepRunData.STEP_AT_MIN === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.STEP_AT_MIN as number
-        );
-      case ColumnHeaderType.MEAN:
-        if (selectedStepRunData.MEAN === undefined) {
-          return '';
-        }
-        return intlNumberFormatter.formatShort(
-          selectedStepRunData.MEAN as number
-        );
-      case ColumnHeaderType.RAW_CHANGE:
-        if (selectedStepRunData.RAW_CHANGE === undefined) {
-          return '';
-        }
-        return numberFormatter.formatShort(
-          Math.abs(selectedStepRunData.RAW_CHANGE as number)
-        );
-      default:
-        return '';
-    }
+  ngAfterContentInit() {
+    this.syncHeaders();
+    this.headerCells.changes.subscribe(this.syncHeaders.bind(this));
+
+    this.syncContent();
+    this.contentCells.changes.subscribe(this.syncContent.bind(this));
   }
 
-  headerClicked(header: ColumnHeaderType) {
+  syncHeaders() {
+    this.headerCellSubscriptions.forEach((subscription) => {
+      subscription.unsubscribe();
+    });
+    this.headerCellSubscriptions = [];
+    this.headerCells.forEach((headerCell) => {
+      this.headerCellSubscriptions.push(
+        headerCell.dragStart.subscribe(this.dragStart.bind(this)),
+        headerCell.dragEnter.subscribe(this.dragEnter.bind(this)),
+        headerCell.dragEnd.subscribe(this.dragEnd.bind(this)),
+        headerCell.headerClicked.subscribe(this.sortByHeader.bind(this)),
+        headerCell.contextMenuOpened.subscribe(
+          this.openContextMenu.bind(this, headerCell.header)
+        )
+      );
+    });
+  }
+
+  syncContent() {
+    this.contentCellSubscriptions.forEach((subscription) => {
+      subscription.unsubscribe();
+    });
+    this.contentCellSubscriptions = this.contentCells
+      .map((contentCell) => [
+        contentCell.contextMenuOpened.subscribe(
+          this.openContextMenu.bind(this, contentCell.header)
+        ),
+      ])
+      .flat();
+  }
+
+  sortByHeader(name: string) {
     if (
-      this.sortingInfo.header === header &&
+      this.sortingInfo.name === name &&
       this.sortingInfo.order === SortingOrder.ASCENDING
     ) {
-      this.sortDataBy.emit({header, order: SortingOrder.DESCENDING});
+      this.sortDataBy.emit({
+        name,
+        order: SortingOrder.DESCENDING,
+      });
       return;
     }
-    this.sortDataBy.emit({header, order: SortingOrder.ASCENDING});
+    this.sortDataBy.emit({
+      name,
+      order: SortingOrder.ASCENDING,
+    });
   }
 
   dragStart(header: ColumnHeader) {
-    this.draggingHeaderType = header.type;
+    this.draggingHeaderName = header.name;
 
     // This stop the end drag animation
     document.addEventListener('dragover', preventDefault);
   }
 
   dragEnd() {
-    if (!this.draggingHeaderType || !this.highlightedColumnType) {
+    if (!this.draggingHeaderName || !this.highlightedColumnName) {
       return;
     }
 
     this.orderColumns.emit(
       this.moveHeader(
-        this.getIndexOfHeaderWithType(this.draggingHeaderType!),
-        this.getIndexOfHeaderWithType(this.highlightedColumnType!)
+        this.getIndexOfHeaderWithName(this.draggingHeaderName!),
+        this.getIndexOfHeaderWithName(this.highlightedColumnName!)
       )
     );
-    this.draggingHeaderType = undefined;
-    this.highlightedColumnType = undefined;
+    this.draggingHeaderName = undefined;
+    this.highlightedColumnName = undefined;
     document.removeEventListener('dragover', preventDefault);
+    this.headerCells.forEach((headerCell) => {
+      headerCell.highlightStyle$.next({});
+    });
   }
 
   dragEnter(header: ColumnHeader) {
-    if (!this.draggingHeaderType) {
+    if (!this.draggingHeaderName) {
       return;
     }
     if (
-      this.getIndexOfHeaderWithType(header.type) <
-      this.getIndexOfHeaderWithType(this.draggingHeaderType!)
+      this.getIndexOfHeaderWithName(header.name) <
+      this.getIndexOfHeaderWithName(this.draggingHeaderName!)
     ) {
       this.highlightSide = Side.LEFT;
     } else {
       this.highlightSide = Side.RIGHT;
     }
-    this.highlightedColumnType = header.type;
+    this.highlightedColumnName = header.name;
+
+    this.headerCells.forEach((headerCell) => {
+      headerCell.highlightStyle$.next(
+        this.getHeaderHighlightStyle(headerCell.header.name)
+      );
+    });
   }
 
   // Move the item at sourceIndex to destinationIndex
@@ -267,8 +226,8 @@ export class DataTableComponent implements OnDestroy {
     return newHeaders;
   }
 
-  getHeaderHighlightStyle(header: ColumnHeaderType) {
-    if (header !== this.highlightedColumnType) {
+  getHeaderHighlightStyle(name: string) {
+    if (name !== this.highlightedColumnName) {
       return {};
     }
 
@@ -279,16 +238,188 @@ export class DataTableComponent implements OnDestroy {
     };
   }
 
-  showColumn(header: ColumnHeader) {
+  getIndexOfHeaderWithName(name: string) {
+    return this.headers.findIndex((element) => {
+      return name === element.name;
+    });
+  }
+
+  focusColumnSelector() {
+    this.columnSelector.focus();
+  }
+
+  openContextMenu(header: ColumnHeader, event: MouseEvent) {
+    event.stopPropagation();
+    event.preventDefault();
+    this.columnSelectorModal?.close();
+    this.filterModal?.close();
+
+    this.contextMenuHeader = header;
+    this.contextMenu.openAtPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
+  onContextMenuClosed() {
+    this.contextMenuHeader = undefined;
+  }
+
+  openColumnSelector(
+    event: MouseEvent,
+    options?: {insertTo?: Side; isSubMenu?: boolean}
+  ) {
+    if (options?.isSubMenu) {
+      event.stopPropagation();
+    }
+    this.filterModal?.close();
+    this.insertColumnTo = options?.insertTo;
+    const rect = (event.target as HTMLElement).getBoundingClientRect();
+    this.columnSelectorModal.openAtPosition({
+      x: rect.x + rect.width,
+      y: rect.y + rect.height,
+    });
+    this.columnSelector.activate();
+  }
+
+  onColumnSelectorClosed() {
+    this.insertColumnTo = undefined;
+    this.columnSelector.deactivate();
+  }
+
+  canContextMenuRemoveColumn() {
+    return this.contextMenuHeader?.removable;
+  }
+
+  canContextMenuInsert() {
     return (
-      header.enabled &&
-      (this.smoothingEnabled || header.type !== ColumnHeaderType.SMOOTHED)
+      this.selectableColumns &&
+      this.selectableColumns.length &&
+      this.contextMenuHeader?.movable
     );
   }
 
-  getIndexOfHeaderWithType(type: ColumnHeaderType) {
-    return this.headers.findIndex((element) => {
-      return type === element.type;
+  isContextMenuEmpty() {
+    return (
+      !this.contextMenuHeader?.removable &&
+      !this.contextMenuHeader?.sortable &&
+      !this.canContextMenuInsert() &&
+      !this.contextMenuHeader?.filterable
+    );
+  }
+
+  contextMenuRemoveColumn() {
+    if (this.contextMenuHeader === undefined) {
+      return;
+    }
+    this.removeColumn.emit(this.contextMenuHeader);
+    this.contextMenu.close();
+  }
+
+  private getInsertIndex() {
+    if (
+      this.contextMenuHeader === undefined ||
+      this.insertColumnTo === undefined
+    ) {
+      return undefined;
+    }
+
+    const index = this.headers.indexOf(this.contextMenuHeader);
+    if (this.insertColumnTo === Side.LEFT) {
+      return index;
+    }
+    if (this.insertColumnTo === Side.RIGHT) {
+      return Math.min(index + 1, this.headers.length);
+    }
+
+    return index;
+  }
+
+  onColumnAdded(header: ColumnHeader) {
+    this.addColumn.emit({header, index: this.getInsertIndex()});
+  }
+
+  openFilterMenu(event: MouseEvent, header: ColumnHeader) {
+    this.filterColumn = header;
+    const rect = (
+      (event.target as HTMLElement).closest('button') as HTMLButtonElement
+    ).getBoundingClientRect();
+    event.stopPropagation();
+    this.columnSelectorModal?.close();
+    this.filterModal.openAtPosition({
+      x: rect.x + rect.width,
+      y: rect.y + rect.height,
+    });
+  }
+
+  getCurrentColumnFilter() {
+    if (!this.filterColumn) {
+      return;
+    }
+    return this.columnFilters.get(this.filterColumn.name);
+  }
+
+  onFilterClosed() {
+    this.filterColumn = undefined;
+  }
+
+  intervalFilterChanged(value: RangeValues) {
+    if (!this.filterColumn) {
+      return;
+    }
+    const filter = this.getCurrentColumnFilter();
+    if (!filter) {
+      return;
+    }
+
+    this.addFilter.emit({
+      header: this.filterColumn,
+      value: {
+        ...filter,
+        filterLowerValue: value.lowerValue,
+        filterUpperValue: value.upperValue,
+      } as IntervalFilter,
+    });
+  }
+
+  discreteFilterChanged(value: DiscreteFilterValue) {
+    if (!this.filterColumn) {
+      return;
+    }
+    const filter = this.getCurrentColumnFilter();
+    if (!filter) {
+      return;
+    }
+    const newValues = new Set([...(filter as DiscreteFilter).filterValues]);
+    if (newValues.has(value)) {
+      newValues.delete(value);
+    } else {
+      newValues.add(value);
+    }
+
+    this.addFilter.emit({
+      header: this.filterColumn,
+      value: {
+        ...filter,
+        filterValues: Array.from(newValues),
+      } as DiscreteFilter,
+    });
+  }
+
+  includeUndefinedToggled() {
+    if (!this.filterColumn) {
+      return;
+    }
+    const filter = this.getCurrentColumnFilter();
+    if (!filter) {
+      return;
+    }
+    this.addFilter.emit({
+      header: this.filterColumn,
+      value: {
+        ...filter,
+        includeUndefined: !filter.includeUndefined,
+      },
     });
   }
 }

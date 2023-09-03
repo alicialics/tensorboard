@@ -20,8 +20,9 @@ import {
   OnInit,
 } from '@angular/core';
 import {createSelector, Store} from '@ngrx/store';
-import {combineLatest, Observable, of, Subject} from 'rxjs';
+import {BehaviorSubject, combineLatest, Observable, of, Subject} from 'rxjs';
 import {
+  combineLatestWith,
   distinctUntilChanged,
   filter,
   map,
@@ -57,10 +58,21 @@ import {
   getRunSelectorRegexFilter,
   getRunSelectorSort,
   getRunsLoadState,
+  getRunsTableFullScreen,
+  getRunsTableHeaders,
+  getRunsTableSortingInfo,
 } from '../../../selectors';
 import {DataLoadState, LoadState} from '../../../types/data';
 import {SortDirection} from '../../../types/ui';
 import {matchRunToRegex} from '../../../util/matcher';
+import {getEnableHparamsInTimeSeries} from '../../../feature_flag/store/feature_flag_selectors';
+import {
+  ColumnHeader,
+  FilterAddedEvent,
+  SortingInfo,
+  SortingOrder,
+  TableData,
+} from '../../../widgets/data_table/types';
 import {
   runColorChanged,
   runPageSelectionToggled,
@@ -69,6 +81,10 @@ import {
   runSelectorRegexFilterChanged,
   runSelectorSortChanged,
   runTableShown,
+  runsTableHeaderAdded,
+  runsTableHeaderOrderChanged,
+  runsTableHeaderRemoved,
+  runsTableSortingInfoChanged,
   singleRunSelected,
 } from '../../actions';
 import {MAX_NUM_RUNS_TO_ENABLE_BY_DEFAULT} from '../../store/runs_types';
@@ -79,6 +95,12 @@ import {
   MetricColumn,
 } from './runs_table_component';
 import {RunsTableColumn, RunTableItem} from './types';
+import {
+  getCurrentColumnFilters,
+  getFilteredRenderableRuns,
+  getPotentialHparamColumns,
+} from '../../../metrics/views/main_view/common_selectors';
+import {runsTableFullScreenToggled} from '../../../core/actions';
 
 const getRunsLoading = createSelector<
   State,
@@ -160,6 +182,34 @@ function sortRunTableItems(
   return sortedItems;
 }
 
+function sortTableDataItems(
+  items: TableData[],
+  sort: SortingInfo
+): TableData[] {
+  const sortedItems = [...items];
+
+  sortedItems.sort((a, b) => {
+    let aValue = a[sort.name];
+    let bValue = b[sort.name];
+
+    if (sort.name === 'experimentAlias') {
+      aValue = (aValue as ExperimentAlias).aliasNumber;
+      bValue = (bValue as ExperimentAlias).aliasNumber;
+    }
+
+    if (aValue === bValue) {
+      return 0;
+    }
+
+    if (aValue === undefined || bValue === undefined) {
+      return bValue === undefined ? -1 : 1;
+    }
+
+    return aValue < bValue === (sort.order === SortingOrder.ASCENDING) ? -1 : 1;
+  });
+  return sortedItems;
+}
+
 function matchFilter(
   filter: DiscreteFilter | IntervalFilter,
   value: number | DiscreteHparamValue | undefined
@@ -194,6 +244,7 @@ function matchFilter(
   selector: 'runs-table',
   template: `
     <runs-table-component
+      *ngIf="!useDataTable()"
       [experimentIds]="experimentIds"
       [useFlexibleLayout]="useFlexibleLayout"
       [numSelectedItems]="numSelectedItems$ | async"
@@ -209,7 +260,7 @@ function matchFilter(
       [regexFilter]="regexFilter$ | async"
       [sortOption]="sortOption$ | async"
       [usePagination]="usePagination"
-      (onSelectionToggle)="onRunSelectionToggle($event)"
+      (onSelectionToggle)="onRunItemSelectionToggle($event)"
       (onSelectionDblClick)="onRunSelectionDblClick($event)"
       (onPageSelectionToggle)="onPageSelectionToggle($event)"
       (onPaginationChange)="onPaginationChange($event)"
@@ -220,17 +271,49 @@ function matchFilter(
       (onHparamDiscreteFilterChanged)="onHparamDiscreteFilterChanged($event)"
       (onMetricFilterChanged)="onMetricFilterChanged($event)"
     ></runs-table-component>
+    <runs-data-table
+      *ngIf="useDataTable()"
+      [headers]="runsColumns$ | async"
+      [data]="sortedRunsTableData$ | async"
+      [selectableColumns]="selectableColumns$ | async"
+      [columnFilters]="columnFilters$ | async"
+      [sortingInfo]="sortingInfo$ | async"
+      [experimentIds]="experimentIds"
+      [regexFilter]="regexFilter$ | async"
+      [isFullScreen]="runsTableFullScreen$ | async"
+      [loading]="loading$ | async"
+      (sortDataBy)="sortDataBy($event)"
+      (orderColumns)="orderColumns($event)"
+      (onSelectionToggle)="onRunSelectionToggle($event)"
+      (onAllSelectionToggle)="onAllSelectionToggle($event)"
+      (onRunColorChange)="onRunColorChange($event)"
+      (onRegexFilterChange)="onRegexFilterChange($event)"
+      (onSelectionDblClick)="onRunSelectionDblClick($event)"
+      (toggleFullScreen)="toggleFullScreen()"
+      (addColumn)="addColumn($event)"
+      (removeColumn)="removeColumn($event)"
+      (addFilter)="addHparamFilter($event)"
+    ></runs-data-table>
   `,
   host: {
     '[class.flex-layout]': 'useFlexibleLayout',
   },
   styles: [
     `
+      :host {
+        position: relative;
+      }
+
       :host.flex-layout {
         display: flex;
       }
 
       :host.flex-layout > runs-table-component {
+        width: 100%;
+      }
+
+      :host.flex-layout > tb-data-table {
+        overflow-y: scroll;
         width: 100%;
       }
     `,
@@ -239,11 +322,13 @@ function matchFilter(
 })
 export class RunsTableContainer implements OnInit, OnDestroy {
   private allUnsortedRunTableItems$?: Observable<RunTableItem[]>;
+  sortedRunsTableData$: Observable<TableData[]> = of([]);
   loading$: Observable<boolean> | null = null;
   filteredItemsLength$?: Observable<number>;
   allItemsLength$?: Observable<number>;
   pageItems$?: Observable<RunTableItem[]>;
   numSelectedItems$?: Observable<number>;
+  sortingInfo$ = this.store.select(getRunsTableSortingInfo);
 
   hparamColumns$: Observable<HparamColumn[]> = of([]);
   metricColumns$: Observable<MetricColumn[]> = of([]);
@@ -271,10 +356,43 @@ export class RunsTableContainer implements OnInit, OnDestroy {
 
   @Input() experimentIds!: string[];
   @Input() showHparamsAndMetrics = false;
+  @Input() forceLegacyTable = false;
 
   sortOption$ = this.store.select(getRunSelectorSort);
   paginationOption$ = this.store.select(getRunSelectorPaginationOption);
   regexFilter$ = this.store.select(getRunSelectorRegexFilter);
+  hparamsEnabled = new BehaviorSubject<boolean>(false);
+  runsColumns$ = this.store.select(getRunsTableHeaders);
+  runsTableFullScreen$ = this.store.select(getRunsTableFullScreen);
+
+  selectableColumns$ = this.store.select(getPotentialHparamColumns).pipe(
+    combineLatestWith(this.runsColumns$),
+    map(([potentialColumns, currentColumns]) => {
+      const currentColumnNames = new Set(currentColumns.map(({name}) => name));
+      return potentialColumns.filter((columnHeader) => {
+        return !currentColumnNames.has(columnHeader.name);
+      });
+    })
+  );
+
+  columnFilters$ = this.store.select(getCurrentColumnFilters);
+
+  allRunsTableData$ = this.store.select(getFilteredRenderableRuns).pipe(
+    map((filteredRenderableRuns) => {
+      return filteredRenderableRuns.map((runTableItem) => {
+        const tableData: TableData = {
+          ...Object.fromEntries(runTableItem.hparams.entries()),
+          id: runTableItem.run.id,
+          run: runTableItem.run.name,
+          experimentAlias: runTableItem.experimentAlias,
+          selected: runTableItem.selected,
+          color: runTableItem.runColor,
+        };
+        return tableData;
+      });
+    })
+  );
+
   private readonly ngUnsubscribe = new Subject<void>();
 
   constructor(private readonly store: Store<State>) {}
@@ -286,8 +404,20 @@ export class RunsTableContainer implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.store.select(getEnableHparamsInTimeSeries).subscribe((enabled) => {
+      this.hparamsEnabled.next(enabled);
+    });
     const getRunTableItemsPerExperiment = this.experimentIds.map((id) =>
       this.getRunTableItemsForExperiment(id)
+    );
+
+    this.sortedRunsTableData$ = combineLatest([
+      this.allRunsTableData$,
+      this.sortingInfo$,
+    ]).pipe(
+      map(([items, sortingInfo]) => {
+        return sortTableDataItems(items, sortingInfo);
+      })
     );
 
     const rawAllUnsortedRunTableItems$ = combineLatest(
@@ -519,6 +649,10 @@ export class RunsTableContainer implements OnInit, OnDestroy {
     return slicedItems;
   }
 
+  sortDataBy(sortingInfo: SortingInfo) {
+    this.store.dispatch(runsTableSortingInfoChanged({sortingInfo}));
+  }
+
   private getRunTableItemsForExperiment(
     experimentId: string
   ): Observable<RunTableItem[]> {
@@ -553,7 +687,7 @@ export class RunsTableContainer implements OnInit, OnDestroy {
     );
   }
 
-  onRunSelectionToggle(item: RunTableItem) {
+  onRunItemSelectionToggle(item: RunTableItem) {
     this.store.dispatch(
       runSelectionToggled({
         runId: item.run.id,
@@ -561,11 +695,20 @@ export class RunsTableContainer implements OnInit, OnDestroy {
     );
   }
 
-  onRunSelectionDblClick(item: RunTableItem) {
-    // Note that a user's double click will trigger both 'change' and 'dblclick'
-    // events so onRunSelectionToggle() will also be called and we will fire
-    // two somewhat conflicting actions: runSelectionToggled and
-    // singleRunSelected. This is ok as long as singleRunSelected is fired last.
+  onRunSelectionToggle(id: string) {
+    this.store.dispatch(
+      runSelectionToggled({
+        runId: id,
+      })
+    );
+  }
+
+  onRunSelectionDblClick(runId: string) {
+    // Note that a user's double click in the Legacy RunsTableComponent will
+    // trigger both 'change' and 'dblclick' events so onRunSelectionToggle()
+    // will also be called and we will fire two somewhat conflicting actions:
+    // runSelectionToggled and singleRunSelected. This is ok as long as
+    // singleRunSelected is fired last.
     //
     // We are therefore relying on the mat-checkbox 'change' event consistently
     // being fired before the 'dblclick' event. Although we don't have any
@@ -576,7 +719,15 @@ export class RunsTableContainer implements OnInit, OnDestroy {
     // event.
     this.store.dispatch(
       singleRunSelected({
-        runId: item.run.id,
+        runId,
+      })
+    );
+  }
+
+  onAllSelectionToggle(runIds: string[]) {
+    this.store.dispatch(
+      runPageSelectionToggled({
+        runIds,
       })
     );
   }
@@ -656,6 +807,36 @@ export class RunsTableContainer implements OnInit, OnDestroy {
         includeUndefined,
         filterLowerValue,
         filterUpperValue,
+      })
+    );
+  }
+
+  toggleFullScreen() {
+    this.store.dispatch(runsTableFullScreenToggled());
+  }
+
+  addColumn({header, index}: {header: ColumnHeader; index: number}) {
+    header.enabled = true;
+    this.store.dispatch(runsTableHeaderAdded({header, index}));
+  }
+
+  removeColumn(header: ColumnHeader) {
+    this.store.dispatch(runsTableHeaderRemoved({header}));
+  }
+
+  orderColumns(newHeaderOrder: ColumnHeader[]) {
+    this.store.dispatch(runsTableHeaderOrderChanged({newHeaderOrder}));
+  }
+
+  useDataTable() {
+    return this.hparamsEnabled.value && !this.forceLegacyTable;
+  }
+
+  addHparamFilter(event: FilterAddedEvent) {
+    this.store.dispatch(
+      hparamsActions.dashboardHparamFilterAdded({
+        name: event.header.name,
+        filter: event.value,
       })
     );
   }

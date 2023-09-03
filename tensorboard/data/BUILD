@@ -1,6 +1,9 @@
 # Description:
 # Experimental framework for generic TensorBoard data providers.
 
+load("@rules_python//python:py_library.bzl", "py_library")
+load("@rules_python//python:py_test.bzl", "py_test")
+
 package(default_visibility = ["//tensorboard:internal"])
 
 licenses(["notice"])
@@ -31,31 +34,6 @@ py_test(
     deps = [
         ":provider",
         "//tensorboard:expect_numpy_installed",
-        "//tensorboard:test",
-    ],
-)
-
-py_library(
-    name = "dispatching_provider",
-    srcs = ["dispatching_provider.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":provider",
-        "//tensorboard:errors",
-    ],
-)
-
-py_test(
-    name = "dispatching_provider_test",
-    size = "small",
-    srcs = ["dispatching_provider_test.py"],
-    srcs_version = "PY3",
-    tags = ["support_notf"],
-    deps = [
-        ":dispatching_provider",
-        ":provider",
-        "//tensorboard:context",
-        "//tensorboard:errors",
         "//tensorboard:test",
     ],
 )

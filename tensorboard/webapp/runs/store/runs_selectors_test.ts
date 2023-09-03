@@ -12,8 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+import {
+  buildAppRoutingState,
+  buildStateFromAppRoutingState,
+} from '../../app_routing/store/testing';
+import {RouteKind} from '../../app_routing/types';
+import {
+  buildSessionGroup,
+  buildStateFromHparamsState,
+  buildHparamsState,
+} from '../../hparams/testing';
+import {buildMockState} from '../../testing/utils';
 import {DataLoadState} from '../../types/data';
 import {SortDirection} from '../../types/ui';
+import {ColumnHeaderType, SortingOrder} from '../../widgets/data_table/types';
 import {GroupByKey, SortType} from '../types';
 import * as selectors from './runs_selectors';
 import {buildRun, buildRunsState, buildStateFromRunsState} from './testing';
@@ -26,15 +38,17 @@ describe('runs_selectors', () => {
     });
 
     it('returns runIdToExpId', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          runIdToExpId: {
-            run1: 'eid1',
-            run2: 'eid1',
-            run3: 'eid2',
-          },
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runIdToExpId: {
+              run1: 'eid1',
+              run2: 'eid1',
+              run3: 'eid2',
+            },
+          })
+        ),
+      });
       expect(selectors.getRunIdToExperimentId(state)).toEqual({
         run1: 'eid1',
         run2: 'eid1',
@@ -49,15 +63,17 @@ describe('runs_selectors', () => {
     });
 
     it('returns eid', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          runIdToExpId: {
-            run1: 'eid1',
-            run2: 'eid1',
-            run3: 'eid2',
-          },
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runIdToExpId: {
+              run1: 'eid1',
+              run2: 'eid1',
+              run3: 'eid2',
+            },
+          })
+        ),
+      });
       expect(
         selectors.getExperimentIdForRunId(state, {
           runId: 'run1',
@@ -76,11 +92,13 @@ describe('runs_selectors', () => {
     });
 
     it('returns `null` if the runId is unknown', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          runIdToExpId: {run1: 'eid1'},
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runIdToExpId: {run1: 'eid1'},
+          })
+        ),
+      });
       expect(
         selectors.getExperimentIdForRunId(state, {
           runId: 'run4',
@@ -96,13 +114,15 @@ describe('runs_selectors', () => {
     });
 
     it('returns run', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          runMetadata: {
-            run1: buildRun({id: 'run1'}),
-          },
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runMetadata: {
+              run1: buildRun({id: 'run1'}),
+            },
+          })
+        ),
+      });
 
       expect(selectors.getRun(state, {runId: 'run1'})).toEqual(
         buildRun({
@@ -112,13 +132,15 @@ describe('runs_selectors', () => {
     });
 
     it('returns `null` if run with `runId` does not exist', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          runMetadata: {
-            run1: buildRun({id: 'run1'}),
-          },
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runMetadata: {
+              run1: buildRun({id: 'run1'}),
+            },
+          })
+        ),
+      });
 
       expect(selectors.getRun(state, {runId: 'run10'})).toBe(null);
     });
@@ -131,16 +153,18 @@ describe('runs_selectors', () => {
     });
 
     it('returns runs', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          runIds: {
-            eid: ['run1'],
-          },
-          runMetadata: {
-            run1: buildRun({id: 'run1'}),
-          },
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runIds: {
+              eid: ['run1'],
+            },
+            runMetadata: {
+              run1: buildRun({id: 'run1'}),
+            },
+          })
+        ),
+      });
       expect(selectors.getRuns(state, {experimentId: 'eid'})).toEqual([
         buildRun({
           id: 'run1',
@@ -149,16 +173,18 @@ describe('runs_selectors', () => {
     });
 
     it('returns runs for the ones that has metadata', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          runIds: {
-            eid: ['run1', 'run2'],
-          },
-          runMetadata: {
-            run1: buildRun({id: 'run1'}),
-          },
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runIds: {
+              eid: ['run1', 'run2'],
+            },
+            runMetadata: {
+              run1: buildRun({id: 'run1'}),
+            },
+          })
+        ),
+      });
       expect(selectors.getRuns(state, {experimentId: 'eid'})).toEqual([
         buildRun({
           id: 'run1',
@@ -167,12 +193,173 @@ describe('runs_selectors', () => {
     });
 
     it('returns empty list if experiment id does not exist', () => {
-      const state = buildStateFromRunsState(buildRunsState());
+      const state = buildMockState();
       expect(
         selectors.getRuns(state, {
           experimentId: 'i_do_not_exist',
         })
       ).toEqual([]);
+    });
+  });
+
+  describe('#getDashboardRuns', () => {
+    it('returns runs', () => {
+      const state = buildMockState({
+        ...buildStateFromAppRoutingState(
+          buildAppRoutingState({
+            activeRoute: {
+              routeKind: RouteKind.EXPERIMENT,
+              params: {experimentId: 'eid'},
+            },
+          })
+        ),
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runIds: {
+              eid: ['run1'],
+            },
+            runMetadata: {
+              run1: buildRun({id: 'run1'}),
+            },
+          })
+        ),
+      });
+      expect(selectors.getDashboardRuns(state)).toEqual([
+        {
+          ...buildRun({
+            id: 'run1',
+          }),
+          experimentId: 'eid',
+        },
+      ]);
+    });
+
+    it('returns runs that have metadata', () => {
+      const state = buildMockState({
+        ...buildStateFromAppRoutingState(
+          buildAppRoutingState({
+            activeRoute: {
+              routeKind: RouteKind.EXPERIMENT,
+              params: {experimentId: 'eid'},
+            },
+          })
+        ),
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runIds: {
+              eid: ['run1', 'run2'],
+            },
+            runMetadata: {
+              run1: buildRun({id: 'run1'}),
+            },
+          })
+        ),
+      });
+      expect(selectors.getDashboardRuns(state)).toEqual([
+        {
+          ...buildRun({
+            id: 'run1',
+          }),
+          experimentId: 'eid',
+        },
+      ]);
+    });
+
+    it('returns empty list if experiment id does not exist', () => {
+      const state = buildMockState(
+        buildStateFromAppRoutingState(
+          buildAppRoutingState({
+            activeRoute: {
+              routeKind: RouteKind.EXPERIMENTS,
+              params: {},
+            },
+          })
+        )
+      );
+      expect(selectors.getDashboardRuns(state)).toEqual([]);
+    });
+
+    it('includes dashboard hparams data', () => {
+      const state = buildMockState({
+        ...buildStateFromAppRoutingState(
+          buildAppRoutingState({
+            activeRoute: {
+              routeKind: RouteKind.EXPERIMENT,
+              params: {experimentId: 'eid'},
+            },
+          })
+        ),
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runIds: {
+              eid: ['run1', 'run2'],
+            },
+            runMetadata: {
+              run1: buildRun({id: 'run1'}),
+            },
+          })
+        ),
+        ...buildStateFromHparamsState(
+          buildHparamsState({
+            dashboardSessionGroups: [
+              buildSessionGroup({
+                name: 'some_session_group',
+                hparams: {hp1: 'foo', hp2: 'bar'},
+                sessions: [
+                  {
+                    name: 'run1',
+                    metricValues: [],
+                  } as any,
+                ],
+              }),
+            ],
+          })
+        ),
+      });
+      expect(selectors.getDashboardRuns(state)).toEqual([
+        {
+          ...buildRun({
+            id: 'run1',
+            hparams: [
+              {name: 'hp1', value: 'foo'},
+              {name: 'hp2', value: 'bar'},
+            ],
+            metrics: [],
+          }),
+          experimentId: 'eid',
+        },
+      ]);
+    });
+
+    it('never returns hparams or metric data from run metadata', () => {
+      const state = buildMockState({
+        ...buildStateFromAppRoutingState(
+          buildAppRoutingState({
+            activeRoute: {
+              routeKind: RouteKind.EXPERIMENT,
+              params: {experimentId: 'eid'},
+            },
+          })
+        ),
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runIds: {
+              eid: ['run1', 'run2'],
+            },
+            runMetadata: {
+              run1: buildRun({
+                id: 'run1',
+                hparams: [{name: 'foo', value: '1'}],
+                metrics: [{tag: 'm1', value: 4}],
+              }),
+            },
+          })
+        ),
+      });
+
+      const response = selectors.getDashboardRuns(state)[0];
+      expect(response.hparams).toBeNull();
+      expect(response.metrics).toBeNull();
     });
   });
 
@@ -183,20 +370,22 @@ describe('runs_selectors', () => {
     });
 
     it('returns runIds', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          runIds: {
-            eid: ['run1', 'run2'],
-          },
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runIds: {
+              eid: ['run1', 'run2'],
+            },
+          })
+        ),
+      });
       expect(
         selectors.getRunIdsForExperiment(state, {experimentId: 'eid'})
       ).toEqual(['run1', 'run2']);
     });
 
     it('returns empty list if experiment id does not exist', () => {
-      const state = buildStateFromRunsState(buildRunsState());
+      const state = buildMockState();
       expect(
         selectors.getRunIdsForExperiment(state, {
           experimentId: 'i_do_not_exist',
@@ -212,14 +401,16 @@ describe('runs_selectors', () => {
     });
 
     it('returns a map from RunId to Run', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          runMetadata: {
-            run1: buildRun({id: 'run1'}),
-            run2: buildRun({id: 'run2'}),
-          },
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runMetadata: {
+              run1: buildRun({id: 'run1'}),
+              run2: buildRun({id: 'run2'}),
+            },
+          })
+        ),
+      });
 
       expect(selectors.getRunMap(state)).toEqual(
         new Map([
@@ -230,11 +421,13 @@ describe('runs_selectors', () => {
     });
 
     it('returns an empty map if there are no runs', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          runMetadata: {},
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runMetadata: {},
+          })
+        ),
+      });
 
       expect(selectors.getRunMap(state)).toEqual(new Map());
     });
@@ -252,9 +445,11 @@ describe('runs_selectors', () => {
         lastLoadedTimeInMs: 1337,
       };
 
-      const state = buildStateFromRunsState(
-        buildRunsState({runsLoadState: {id1: loadState}})
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({runsLoadState: {id1: loadState}})
+        ),
+      });
       expect(
         selectors.getRunsLoadState(state, {
           experimentId: 'id1',
@@ -263,13 +458,15 @@ describe('runs_selectors', () => {
     });
 
     it('returns NOT_LOADED state if experiment id does not exist', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          runsLoadState: {
-            id1: {state: DataLoadState.FAILED, lastLoadedTimeInMs: 1337},
-          },
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            runsLoadState: {
+              id1: {state: DataLoadState.FAILED, lastLoadedTimeInMs: 1337},
+            },
+          })
+        ),
+      });
       expect(selectors.getRunsLoadState(state, {experimentId: 'id2'})).toEqual({
         lastLoadedTimeInMs: null,
         state: DataLoadState.NOT_LOADED,
@@ -284,8 +481,8 @@ describe('runs_selectors', () => {
     });
 
     it('returns selection map of runId passed', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState(
+      const state = buildMockState({
+        runs: buildRunsState(
           {},
           {
             selectionState: new Map([
@@ -293,8 +490,8 @@ describe('runs_selectors', () => {
               ['r2', true],
             ]),
           }
-        )
-      );
+        ),
+      });
 
       const actual = selectors.getRunSelectionMap(state);
       expect(actual).toEqual(
@@ -399,14 +596,16 @@ describe('runs_selectors', () => {
     });
 
     it('returns override map', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          defaultRunColorIdForGroupBy: new Map([
-            ['foo', 1],
-            ['bar', 2],
-          ]),
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            defaultRunColorIdForGroupBy: new Map([
+              ['foo', 1],
+              ['bar', 2],
+            ]),
+          })
+        ),
+      });
 
       expect(selectors.getDefaultRunColorIdMap(state)).toEqual(
         new Map([
@@ -424,13 +623,15 @@ describe('runs_selectors', () => {
     });
 
     it('returns groupBy set by user when it is present', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          colorGroupRegexString: 'hello',
-          initialGroupBy: {key: GroupByKey.RUN},
-          userSetGroupByKey: GroupByKey.REGEX,
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            colorGroupRegexString: 'hello',
+            initialGroupBy: {key: GroupByKey.RUN},
+            userSetGroupByKey: GroupByKey.REGEX,
+          })
+        ),
+      });
 
       expect(selectors.getRunUserSetGroupBy(state)).toEqual({
         key: GroupByKey.REGEX,
@@ -439,12 +640,14 @@ describe('runs_selectors', () => {
     });
 
     it('returns null if user never has set one', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          initialGroupBy: {key: GroupByKey.RUN},
-          userSetGroupByKey: null,
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            initialGroupBy: {key: GroupByKey.RUN},
+            userSetGroupByKey: null,
+          })
+        ),
+      });
 
       expect(selectors.getRunUserSetGroupBy(state)).toEqual(null);
     });
@@ -458,13 +661,15 @@ describe('runs_selectors', () => {
     });
 
     it('returns groupBy set by user when it is present', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          colorGroupRegexString: 'hello',
-          initialGroupBy: {key: GroupByKey.RUN},
-          userSetGroupByKey: GroupByKey.REGEX,
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            colorGroupRegexString: 'hello',
+            initialGroupBy: {key: GroupByKey.RUN},
+            userSetGroupByKey: GroupByKey.REGEX,
+          })
+        ),
+      });
 
       expect(selectors.getRunGroupBy(state)).toEqual({
         key: GroupByKey.REGEX,
@@ -473,13 +678,15 @@ describe('runs_selectors', () => {
     });
 
     it('returns groupBy set by user with regexString overridden', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          colorGroupRegexString: '',
-          initialGroupBy: {key: GroupByKey.REGEX, regexString: 'hello'},
-          userSetGroupByKey: GroupByKey.REGEX,
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            colorGroupRegexString: '',
+            initialGroupBy: {key: GroupByKey.REGEX, regexString: 'hello'},
+            userSetGroupByKey: GroupByKey.REGEX,
+          })
+        ),
+      });
 
       expect(selectors.getRunGroupBy(state)).toEqual({
         key: GroupByKey.REGEX,
@@ -488,12 +695,14 @@ describe('runs_selectors', () => {
     });
 
     it('returns initial group by if user never has set one', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          initialGroupBy: {key: GroupByKey.RUN},
-          userSetGroupByKey: null,
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            initialGroupBy: {key: GroupByKey.RUN},
+            userSetGroupByKey: null,
+          })
+        ),
+      });
 
       expect(selectors.getRunGroupBy(state)).toEqual({
         key: GroupByKey.RUN,
@@ -508,29 +717,93 @@ describe('runs_selectors', () => {
     });
 
     it('returns regex string when it is group by regex', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          colorGroupRegexString: 'foo(\\d+)',
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            colorGroupRegexString: 'foo(\\d+)',
+          })
+        ),
+      });
 
       expect(selectors.getColorGroupRegexString(state)).toEqual('foo(\\d+)');
     });
 
     it('returns default empty string if user never has set one', () => {
-      const state = buildStateFromRunsState(buildRunsState({}));
+      const state = buildMockState();
 
       expect(selectors.getColorGroupRegexString(state)).toEqual('');
     });
 
     it('returns regex string even if it is not user set groupby', () => {
-      const state = buildStateFromRunsState(
-        buildRunsState({
-          colorGroupRegexString: 'foo(\\d+)',
-        })
-      );
+      const state = buildMockState({
+        ...buildStateFromRunsState(
+          buildRunsState({
+            colorGroupRegexString: 'foo(\\d+)',
+          })
+        ),
+      });
 
       expect(selectors.getColorGroupRegexString(state)).toEqual('foo(\\d+)');
+    });
+  });
+
+  describe('#getRunsTableHeaders', () => {
+    it('returns the runs table headers', () => {
+      const state = buildMockState({
+        runs: buildRunsState(
+          {},
+          {
+            runsTableHeaders: [
+              {
+                type: ColumnHeaderType.RUN,
+                name: 'run',
+                displayName: 'Run',
+                enabled: true,
+              },
+              {
+                type: ColumnHeaderType.COLOR,
+                name: 'color',
+                displayName: 'Color',
+                enabled: false,
+              },
+            ],
+          }
+        ),
+      });
+      expect(selectors.getRunsTableHeaders(state)).toEqual([
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.COLOR,
+          name: 'color',
+          displayName: 'Color',
+          enabled: false,
+        },
+      ]);
+    });
+  });
+
+  describe('#getRunsTableSortingInfo', () => {
+    it('returns the runs data table sorting info', () => {
+      const state = buildMockState({
+        runs: buildRunsState(
+          {},
+          {
+            sortingInfo: {
+              name: 'run',
+              order: SortingOrder.ASCENDING,
+            },
+          }
+        ),
+      });
+      expect(selectors.getRunsTableSortingInfo(state)).toEqual({
+        name: 'run',
+        order: SortingOrder.ASCENDING,
+      });
     });
   });
 });

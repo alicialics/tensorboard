@@ -28,19 +28,21 @@ import {
   dataTableColumnEdited,
   dataTableColumnToggled,
   metricsSlideoutMenuClosed,
+  tableEditorTabChanged,
 } from '../../../actions';
 import {
   getRangeSelectionHeaders,
   getSingleSelectionHeaders,
+  getTableEditorSelectedTab,
 } from '../../../store/metrics_selectors';
 import {
   ColumnHeaderType,
   DataTableMode,
-} from '../../card_renderer/scalar_card_types';
+} from '../../../../widgets/data_table/types';
 import {DataTableHeaderModule} from '../../../../widgets/data_table/data_table_header_module';
 import {ScalarColumnEditorComponent} from './scalar_column_editor_component';
 import {ScalarColumnEditorContainer} from './scalar_column_editor_container';
-import {MatTabsModule} from '@angular/material/tabs';
+import {MatLegacyTabsModule} from '@angular/material/legacy-tabs';
 
 describe('scalar column editor', () => {
   let store: MockStore<State>;
@@ -70,7 +72,11 @@ describe('scalar column editor', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [DataTableHeaderModule, MatTabsModule, NoopAnimationsModule],
+      imports: [
+        DataTableHeaderModule,
+        MatLegacyTabsModule,
+        NoopAnimationsModule,
+      ],
       declarations: [ScalarColumnEditorContainer, ScalarColumnEditorComponent],
       providers: [provideMockStore()],
       schemas: [NO_ERRORS_SCHEMA],
@@ -78,6 +84,7 @@ describe('scalar column editor', () => {
     store = TestBed.inject<Store<State>>(Store) as MockStore<State>;
     store.overrideSelector(getRangeSelectionHeaders, []);
     store.overrideSelector(getSingleSelectionHeaders, []);
+    store.overrideSelector(getTableEditorSelectedTab, DataTableMode.SINGLE);
   });
 
   afterEach(() => {
@@ -91,8 +98,18 @@ describe('scalar column editor', () => {
 
   it('renders single selection headers when selectedTab is set to SINGLE', fakeAsync(() => {
     store.overrideSelector(getSingleSelectionHeaders, [
-      {type: ColumnHeaderType.RUN, enabled: true},
-      {type: ColumnHeaderType.VALUE, enabled: true},
+      {
+        type: ColumnHeaderType.RUN,
+        name: 'run',
+        displayName: 'Run',
+        enabled: true,
+      },
+      {
+        type: ColumnHeaderType.VALUE,
+        name: 'value',
+        displayName: 'Value',
+        enabled: true,
+      },
     ]);
     const fixture = createComponent();
 
@@ -108,8 +125,18 @@ describe('scalar column editor', () => {
 
   it('renders range selection headers when selectedTab is set to RANGE', fakeAsync(() => {
     store.overrideSelector(getRangeSelectionHeaders, [
-      {type: ColumnHeaderType.RUN, enabled: true},
-      {type: ColumnHeaderType.VALUE, enabled: true},
+      {
+        type: ColumnHeaderType.RUN,
+        name: 'run',
+        displayName: 'Run',
+        enabled: true,
+      },
+      {
+        type: ColumnHeaderType.VALUE,
+        name: 'value',
+        displayName: 'Value',
+        enabled: true,
+      },
     ]);
     const fixture = createComponent();
     switchTabs(fixture, DataTableMode.RANGE);
@@ -125,8 +152,18 @@ describe('scalar column editor', () => {
 
   it('checkboxes reflect enabled state', fakeAsync(() => {
     store.overrideSelector(getSingleSelectionHeaders, [
-      {type: ColumnHeaderType.RUN, enabled: true},
-      {type: ColumnHeaderType.VALUE, enabled: false},
+      {
+        type: ColumnHeaderType.RUN,
+        name: 'run',
+        displayName: 'Run',
+        enabled: true,
+      },
+      {
+        type: ColumnHeaderType.VALUE,
+        name: 'value',
+        displayName: 'Value',
+        enabled: false,
+      },
     ]);
     const fixture = createComponent();
 
@@ -151,12 +188,23 @@ describe('scalar column editor', () => {
 
     it('dispatches dataTableColumnToggled action with singe selection when checkbox is clicked', fakeAsync(() => {
       store.overrideSelector(getSingleSelectionHeaders, [
-        {type: ColumnHeaderType.RUN, enabled: true},
-        {type: ColumnHeaderType.VALUE, enabled: false},
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.VALUE,
+          name: 'value',
+          displayName: 'Value',
+          enabled: false,
+        },
       ]);
       const fixture = createComponent();
       switchTabs(fixture, DataTableMode.SINGLE);
-
+      // Clear action fired on tab change.
+      dispatchedActions = [];
       const checkboxes = fixture.debugElement.queryAll(By.css('mat-checkbox'));
 
       checkboxes[0].triggerEventHandler('change');
@@ -165,19 +213,36 @@ describe('scalar column editor', () => {
       expect(dispatchedActions[0]).toEqual(
         dataTableColumnToggled({
           dataTableMode: DataTableMode.SINGLE,
-          headerType: ColumnHeaderType.RUN,
+          header: {
+            type: ColumnHeaderType.RUN,
+            name: 'run',
+            displayName: 'Run',
+            enabled: true,
+          },
         })
       );
     }));
 
     it('dispatches dataTableColumnToggled action with range selection when checkbox is clicked', fakeAsync(() => {
       store.overrideSelector(getRangeSelectionHeaders, [
-        {type: ColumnHeaderType.SMOOTHED, enabled: true},
-        {type: ColumnHeaderType.MAX_VALUE, enabled: false},
+        {
+          type: ColumnHeaderType.SMOOTHED,
+          name: 'smoothed',
+          displayName: 'Smoothed',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.MAX_VALUE,
+          name: 'maxValue',
+          displayName: 'Max',
+          enabled: false,
+        },
       ]);
       const fixture = createComponent();
 
       switchTabs(fixture, DataTableMode.RANGE);
+      // Clear action fired on tab change.
+      dispatchedActions = [];
       const checkboxes = fixture.debugElement.queryAll(By.css('mat-checkbox'));
       checkboxes[1].triggerEventHandler('change', {});
       fixture.detectChanges();
@@ -185,7 +250,12 @@ describe('scalar column editor', () => {
       expect(dispatchedActions[0]).toEqual(
         dataTableColumnToggled({
           dataTableMode: DataTableMode.RANGE,
-          headerType: ColumnHeaderType.MAX_VALUE,
+          header: {
+            type: ColumnHeaderType.MAX_VALUE,
+            name: 'maxValue',
+            displayName: 'Max',
+            enabled: false,
+          },
         })
       );
     }));
@@ -202,13 +272,29 @@ describe('scalar column editor', () => {
 
     it('dispatches dataTableColumnEdited action with singe selection when header is dragged', fakeAsync(() => {
       store.overrideSelector(getSingleSelectionHeaders, [
-        {type: ColumnHeaderType.RUN, enabled: true},
-        {type: ColumnHeaderType.VALUE, enabled: true},
-        {type: ColumnHeaderType.STEP, enabled: true},
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.VALUE,
+          name: 'value',
+          displayName: 'Value',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.STEP,
+          name: 'step',
+          displayName: 'Step',
+          enabled: true,
+        },
       ]);
       const fixture = createComponent();
       switchTabs(fixture, DataTableMode.SINGLE);
-
+      // Clear action fired on tab change.
+      dispatchedActions = [];
       const headerListItems = fixture.debugElement.queryAll(
         By.css('.header-list-item')
       );
@@ -221,9 +307,24 @@ describe('scalar column editor', () => {
         dataTableColumnEdited({
           dataTableMode: DataTableMode.SINGLE,
           headers: [
-            {type: ColumnHeaderType.VALUE, enabled: true},
-            {type: ColumnHeaderType.RUN, enabled: true},
-            {type: ColumnHeaderType.STEP, enabled: true},
+            {
+              type: ColumnHeaderType.VALUE,
+              name: 'value',
+              displayName: 'Value',
+              enabled: true,
+            },
+            {
+              type: ColumnHeaderType.RUN,
+              name: 'run',
+              displayName: 'Run',
+              enabled: true,
+            },
+            {
+              type: ColumnHeaderType.STEP,
+              name: 'step',
+              displayName: 'Step',
+              enabled: true,
+            },
           ],
         })
       );
@@ -231,13 +332,29 @@ describe('scalar column editor', () => {
 
     it('dispatches dataTableColumnEdited action with range selection when header is dragged', fakeAsync(() => {
       store.overrideSelector(getRangeSelectionHeaders, [
-        {type: ColumnHeaderType.RUN, enabled: true},
-        {type: ColumnHeaderType.MAX_VALUE, enabled: true},
-        {type: ColumnHeaderType.MIN_VALUE, enabled: true},
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.MAX_VALUE,
+          name: 'maxValue',
+          displayName: 'Max',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.MIN_VALUE,
+          name: 'minValue',
+          displayName: 'Min',
+          enabled: true,
+        },
       ]);
       const fixture = createComponent();
       switchTabs(fixture, DataTableMode.RANGE);
-
+      // Clear action fired on tab change.
+      dispatchedActions = [];
       const headerListItems = fixture.debugElement.queryAll(
         By.css('.header-list-item')
       );
@@ -250,9 +367,24 @@ describe('scalar column editor', () => {
         dataTableColumnEdited({
           dataTableMode: DataTableMode.RANGE,
           headers: [
-            {type: ColumnHeaderType.MAX_VALUE, enabled: true},
-            {type: ColumnHeaderType.RUN, enabled: true},
-            {type: ColumnHeaderType.MIN_VALUE, enabled: true},
+            {
+              type: ColumnHeaderType.MAX_VALUE,
+              name: 'maxValue',
+              displayName: 'Max',
+              enabled: true,
+            },
+            {
+              type: ColumnHeaderType.RUN,
+              name: 'run',
+              displayName: 'Run',
+              enabled: true,
+            },
+            {
+              type: ColumnHeaderType.MIN_VALUE,
+              name: 'minValue',
+              displayName: 'Min',
+              enabled: true,
+            },
           ],
         })
       );
@@ -260,9 +392,24 @@ describe('scalar column editor', () => {
 
     it('highlights item with bottom edge when dragging below item being dragged', fakeAsync(() => {
       store.overrideSelector(getRangeSelectionHeaders, [
-        {type: ColumnHeaderType.RUN, enabled: true},
-        {type: ColumnHeaderType.MAX_VALUE, enabled: true},
-        {type: ColumnHeaderType.MIN_VALUE, enabled: true},
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.MAX_VALUE,
+          name: 'maxValue',
+          displayName: 'Max',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.MIN_VALUE,
+          name: 'minValue',
+          displayName: 'Min',
+          enabled: true,
+        },
       ]);
       const fixture = createComponent();
       switchTabs(fixture, DataTableMode.RANGE);
@@ -281,9 +428,24 @@ describe('scalar column editor', () => {
 
     it('highlights item with top edge when dragging above item being dragged', fakeAsync(() => {
       store.overrideSelector(getRangeSelectionHeaders, [
-        {type: ColumnHeaderType.RUN, enabled: true},
-        {type: ColumnHeaderType.MAX_VALUE, enabled: true},
-        {type: ColumnHeaderType.MIN_VALUE, enabled: true},
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.MAX_VALUE,
+          name: 'maxValue',
+          displayName: 'Max',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.MIN_VALUE,
+          name: 'minValue',
+          displayName: 'Min',
+          enabled: true,
+        },
       ]);
       const fixture = createComponent();
       switchTabs(fixture, DataTableMode.RANGE);
@@ -317,6 +479,57 @@ describe('scalar column editor', () => {
         .triggerEventHandler('click', {});
 
       expect(dispatchedActions[0]).toEqual(metricsSlideoutMenuClosed());
+    });
+  });
+
+  describe('tabs', () => {
+    let dispatchedActions: Action[] = [];
+    beforeEach(() => {
+      dispatchedActions = [];
+      spyOn(store, 'dispatch').and.callFake((action: Action) => {
+        dispatchedActions.push(action);
+      });
+    });
+    it('dispatches tableEditorTabChanged action when tab is clicked', fakeAsync(() => {
+      const fixture = createComponent();
+      switchTabs(fixture, DataTableMode.RANGE);
+      fixture.detectChanges();
+
+      expect(dispatchedActions[0]).toEqual(
+        tableEditorTabChanged({tab: DataTableMode.RANGE})
+      );
+
+      dispatchedActions = [];
+      switchTabs(fixture, DataTableMode.SINGLE);
+      fixture.detectChanges();
+
+      expect(dispatchedActions[0]).toEqual(
+        tableEditorTabChanged({tab: DataTableMode.SINGLE})
+      );
+    }));
+
+    it('update when global tableEditorSelectedTab changes', () => {
+      const fixture = createComponent();
+      fixture.detectChanges();
+      const tabs = fixture.debugElement.queryAll(By.css('.mat-tab-label'));
+
+      expect(
+        tabs[0].attributes['class']?.includes('mat-tab-label-active')
+      ).toBeTrue();
+      expect(
+        tabs[1].attributes['class']?.includes('mat-tab-label-active')
+      ).toBeFalse();
+
+      store.overrideSelector(getTableEditorSelectedTab, DataTableMode.RANGE);
+      store.refreshState();
+      fixture.detectChanges();
+
+      expect(
+        tabs[0].attributes['class']?.includes('mat-tab-label-active')
+      ).toBeFalse();
+      expect(
+        tabs[1].attributes['class']?.includes('mat-tab-label-active')
+      ).toBeTrue();
     });
   });
 });

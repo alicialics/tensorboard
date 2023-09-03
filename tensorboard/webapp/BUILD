@@ -142,6 +142,7 @@ tf_ng_module(
         "app_state.ts",
     ],
     deps = [
+        "//tensorboard/webapp/alert/store:types",
         "//tensorboard/webapp/app_routing/store:types",
         "//tensorboard/webapp/core/store",
         "//tensorboard/webapp/experiments/store:types",
@@ -149,6 +150,7 @@ tf_ng_module(
         "//tensorboard/webapp/hparams:types",
         "//tensorboard/webapp/metrics/store:types",
         "//tensorboard/webapp/notification_center/_redux:types",
+        "//tensorboard/webapp/persistent_settings/_redux:types",
         "//tensorboard/webapp/runs/store:types",
         "//tensorboard/webapp/settings",
     ],
@@ -264,6 +266,7 @@ tf_ng_web_test_suite(
         "//tensorboard/webapp/core/views:test_lib",
         "//tensorboard/webapp/customization:customization_test_lib",
         "//tensorboard/webapp/deeplink:deeplink_test_lib",
+        "//tensorboard/webapp/experiments/store:store_test_lib",
         "//tensorboard/webapp/header:test_lib",
         "//tensorboard/webapp/metrics:integration_test",
         "//tensorboard/webapp/metrics:test_lib",
@@ -292,6 +295,7 @@ tf_ng_web_test_suite(
         "//tensorboard/webapp/widgets:resize_detector_testing",
         "//tensorboard/webapp/widgets/card_fob:card_fob_test",
         "//tensorboard/webapp/widgets/content_wrapping_input:content_wrapping_input_tests",
+        "//tensorboard/webapp/widgets/custom_modal:custom_modal_test",
         "//tensorboard/webapp/widgets/data_table:data_table_test",
         "//tensorboard/webapp/widgets/dropdown:dropdown_tests",
         "//tensorboard/webapp/widgets/experiment_alias:experiment_alias_test",
@@ -318,7 +322,10 @@ tf_svg_bundle(
     # //tensorboard/webapp/testing/mat_icon_module.ts.
     # 'com_google_material_design_icon' in third_party/js.bzl
     srcs = [
+        "@com_google_material_design_icon//:add_24px.svg",
+        "@com_google_material_design_icon//:arrow_back_24px.svg",
         "@com_google_material_design_icon//:arrow_downward_24px.svg",
+        "@com_google_material_design_icon//:arrow_forward_24px.svg",
         "@com_google_material_design_icon//:arrow_upward_24px.svg",
         "@com_google_material_design_icon//:brightness_6_24px.svg",
         "@com_google_material_design_icon//:bug_report_24px.svg",

@@ -23,11 +23,14 @@ import {
   buildNavigatedAction,
   buildRoute,
 } from '../../app_routing/testing';
+import {RouteKind} from '../../app_routing/types';
 import {State} from '../../app_state';
 import * as coreActions from '../../core/actions';
 import {
   getActiveRoute,
+  getEnableHparamsInTimeSeries,
   getExperimentIdsFromRoute,
+  getRouteKind,
   getRuns,
   getRunsLoadState,
 } from '../../selectors';
@@ -61,6 +64,7 @@ describe('runs_effects', () => {
   let dispatchSpy: jasmine.Spy;
   let actualActions: Action[];
   let selectSpy: jasmine.Spy;
+  let fetchHparamsSpy: jasmine.Spy;
 
   function flushFetchRuns(requestIndex: number, runs: Run[]) {
     expect(fetchRunsSubjects.length).toBeGreaterThan(requestIndex);
@@ -112,7 +116,8 @@ describe('runs_effects', () => {
     });
 
     fetchHparamsMetadataSubjects = [];
-    spyOn(runsDataSource, 'fetchHparamsMetadata').and.callFake(() => {
+    fetchHparamsSpy = spyOn(runsDataSource, 'fetchHparamsMetadata');
+    fetchHparamsSpy.and.callFake(() => {
       const subject = new ReplaySubject<HparamsAndMetadata>(1);
       fetchHparamsMetadataSubjects.push(subject);
       return subject;
@@ -228,6 +233,15 @@ describe('runs_effects', () => {
 
         expect(actualActions).toEqual([]);
       });
+    });
+
+    it('does not fetch hparam data when enableHparamsInTimeSeries is true when on a dashboard route', () => {
+      store.overrideSelector(getEnableHparamsInTimeSeries, true);
+      store.overrideSelector(getRouteKind, RouteKind.EXPERIMENT);
+      store.refreshState();
+
+      action.next(actions.runTableShown({experimentIds: ['a']}));
+      expect(fetchHparamsSpy).not.toHaveBeenCalled();
     });
 
     it('fires FAILED action when failed to fetch runs', () => {
@@ -469,6 +483,24 @@ describe('runs_effects', () => {
             }),
           ]);
         });
+      });
+    });
+
+    [
+      {specAction: buildNavigatedAction, specName: 'navigation'},
+      {specAction: coreActions.manualReload, specName: 'manual reload'},
+      {specAction: coreActions.reload, specName: 'auto reload'},
+    ].forEach(({specAction, specName}) => {
+      it(`does not fetch runs on card route when action is ${specName}`, () => {
+        store.overrideSelector(getActiveRoute, {
+          routeKind: RouteKind.CARD,
+          params: {},
+        });
+        store.refreshState();
+
+        action.next(specAction());
+
+        expect(actualActions).toEqual([]);
       });
     });
 

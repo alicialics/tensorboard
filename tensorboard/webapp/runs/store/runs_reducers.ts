@@ -35,9 +35,11 @@ import {
   RunsDataState,
   RunsState,
   RunsUiNamespacedState,
+  RunsUiNonNamespacedState,
   RunsUiState,
 } from './runs_types';
 import {createGroupBy, groupRuns} from './utils';
+import {ColumnHeaderType, SortingOrder} from '../../widgets/data_table/types';
 
 const {
   initialState: dataInitialState,
@@ -309,7 +311,10 @@ const initialSort: RunsUiNamespacedState['sort'] = {
   direction: SortDirection.UNSET,
 };
 const {initialState: uiInitialState, reducers: uiNamespaceContextedReducers} =
-  createNamespaceContextedState(
+  createNamespaceContextedState<
+    RunsUiNamespacedState,
+    RunsUiNonNamespacedState
+  >(
     {
       paginationOption: {
         pageIndex: 0,
@@ -317,8 +322,65 @@ const {initialState: uiInitialState, reducers: uiNamespaceContextedReducers} =
       },
       sort: initialSort,
       selectionState: new Map<string, boolean>(),
+      runsTableHeaders: [
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+          sortable: true,
+          movable: true,
+          filterable: false,
+        },
+      ],
+      sortingInfo: {
+        name: 'run',
+        order: SortingOrder.DESCENDING,
+      },
     },
-    {}
+    {},
+    /* onNavigated() */
+    (state, oldRoute, newRoute) => {
+      if (!areSameRouteKindAndExperiments(oldRoute, newRoute)) {
+        if (
+          newRoute.routeKind === RouteKind.COMPARE_EXPERIMENT &&
+          !state.runsTableHeaders.find(
+            (header) => header.name === 'experimentAlias'
+          )
+        ) {
+          const newRunsTableHeaders = [
+            ...state.runsTableHeaders,
+            {
+              type: ColumnHeaderType.CUSTOM,
+              name: 'experimentAlias',
+              displayName: 'Experiment',
+              enabled: true,
+              movable: true,
+              sortable: true,
+            },
+          ];
+
+          return {
+            ...state,
+            runsTableHeaders: newRunsTableHeaders,
+          };
+        }
+        if (
+          oldRoute?.routeKind === RouteKind.COMPARE_EXPERIMENT &&
+          newRoute.routeKind !== RouteKind.COMPARE_EXPERIMENT
+        ) {
+          const newRunsTableHeaders = state.runsTableHeaders.filter(
+            (column) => column.name !== 'experimentAlias'
+          );
+
+          return {
+            ...state,
+            runsTableHeaders: newRunsTableHeaders,
+          };
+        }
+      }
+      return state;
+    }
   );
 
 const uiReducer: ActionReducer<RunsUiState, Action> = createReducer(
@@ -406,6 +468,41 @@ const uiReducer: ActionReducer<RunsUiState, Action> = createReducer(
     return {
       ...state,
       selectionState: nextSelectionState,
+    };
+  }),
+  on(runsActions.runsTableHeaderAdded, (state, {header, index}) => {
+    const newRunsTableHeaders = [...state.runsTableHeaders];
+    if (index === undefined) {
+      newRunsTableHeaders.push(header);
+    } else {
+      newRunsTableHeaders.splice(index, 0, header);
+    }
+
+    return {
+      ...state,
+      runsTableHeaders: newRunsTableHeaders,
+    };
+  }),
+  on(runsActions.runsTableHeaderRemoved, (state, {header}) => {
+    const newRunsTableHeaders = state.runsTableHeaders.filter(
+      ({name}) => name !== header.name
+    );
+
+    return {
+      ...state,
+      runsTableHeaders: newRunsTableHeaders,
+    };
+  }),
+  on(runsActions.runsTableHeaderOrderChanged, (state, {newHeaderOrder}) => {
+    return {
+      ...state,
+      runsTableHeaders: newHeaderOrder,
+    };
+  }),
+  on(runsActions.runsTableSortingInfoChanged, (state, {sortingInfo}) => {
+    return {
+      ...state,
+      sortingInfo,
     };
   })
 );

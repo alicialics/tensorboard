@@ -22,11 +22,12 @@ import {RouteKind} from '../../app_routing/types';
 import {deepFreeze} from '../../testing/lang';
 import {DataLoadState} from '../../types/data';
 import {SortDirection} from '../../types/ui';
+import {ColumnHeaderType, SortingOrder} from '../../widgets/data_table/types';
 import * as actions from '../actions';
 import {buildHparamsAndMetadata} from '../data_source/testing';
 import {GroupByKey, SortType, URLDeserializedState} from '../types';
 import * as runsReducers from './runs_reducers';
-import {MAX_NUM_RUNS_TO_ENABLE_BY_DEFAULT, Run} from './runs_types';
+import {MAX_NUM_RUNS_TO_ENABLE_BY_DEFAULT, Run, RunsState} from './runs_types';
 import {buildRun, buildRunsState} from './testing';
 
 describe('runs_reducers', () => {
@@ -1351,6 +1352,296 @@ describe('runs_reducers', () => {
       );
 
       expect(nextState.data.initialGroupBy.key).toBe(GroupByKey.RUN);
+    });
+
+    it('adds the experiment alias column to the runs table columns list', () => {
+      const state = buildRunsState(
+        {},
+        {
+          runsTableHeaders: [
+            {
+              type: ColumnHeaderType.RUN,
+              name: 'run',
+              displayName: 'Run',
+              enabled: true,
+            },
+          ],
+        }
+      );
+      const nextState = runsReducers.reducers(
+        state,
+        buildNavigatedAction({
+          before: buildRoute({routeKind: RouteKind.EXPERIMENT}),
+          after: buildCompareRoute(['eid1:run1', 'eid1:run2']),
+        })
+      );
+      expect(
+        nextState.ui.runsTableHeaders.map((column) => column.name)
+      ).toEqual(['run', 'experimentAlias']);
+    });
+
+    it('does not add duplicate experiment alias columns', () => {
+      const state = buildRunsState(
+        {},
+        {
+          runsTableHeaders: [
+            {
+              type: ColumnHeaderType.CUSTOM,
+              name: 'experimentAlias',
+              displayName: 'Experiment',
+              enabled: true,
+            },
+            {
+              type: ColumnHeaderType.RUN,
+              name: 'run',
+              displayName: 'Run',
+              enabled: true,
+            },
+          ],
+        }
+      );
+      const nextState = runsReducers.reducers(
+        state,
+        buildNavigatedAction({
+          before: buildRoute({routeKind: RouteKind.EXPERIMENT}),
+          after: buildCompareRoute(['eid1:run1', 'eid1:run2']),
+        })
+      );
+      expect(
+        nextState.ui.runsTableHeaders.map((column) => column.name)
+      ).toEqual(['experimentAlias', 'run']);
+    });
+
+    it('removes the experiment alias column when changing away comparison view', () => {
+      const state = buildRunsState(
+        {},
+        {
+          runsTableHeaders: [
+            {
+              type: ColumnHeaderType.CUSTOM,
+              name: 'experimentAlias',
+              displayName: 'Experiment',
+              enabled: true,
+            },
+            {
+              type: ColumnHeaderType.RUN,
+              name: 'run',
+              displayName: 'Run',
+              enabled: true,
+            },
+          ],
+        }
+      );
+
+      const nextState = runsReducers.reducers(
+        state,
+        buildNavigatedAction({
+          before: buildCompareRoute(['eid1:run1', 'eid1:run2']),
+          after: buildRoute({routeKind: RouteKind.EXPERIMENT}),
+        })
+      );
+      expect(
+        nextState.ui.runsTableHeaders.map((column) => column.name)
+      ).toEqual(['run']);
+    });
+  });
+
+  describe('runsTableHeaderAdded', () => {
+    let state: RunsState;
+
+    beforeEach(() => {
+      state = buildRunsState(
+        {},
+        {
+          runsTableHeaders: [
+            {
+              type: ColumnHeaderType.RUN,
+              name: 'run',
+              displayName: 'Run',
+              enabled: true,
+            },
+            {
+              type: ColumnHeaderType.VALUE,
+              name: 'value',
+              displayName: 'Value',
+              enabled: true,
+            },
+          ],
+        }
+      );
+    });
+
+    it('adds new column to end of list when no index is provided', () => {
+      const nextState = runsReducers.reducers(
+        state,
+        actions.runsTableHeaderAdded({
+          header: {
+            type: ColumnHeaderType.COLOR,
+            name: 'color',
+            displayName: 'Color',
+            enabled: true,
+          },
+        })
+      );
+      expect(
+        nextState.ui.runsTableHeaders.map((header) => header.type)
+      ).toEqual([
+        ColumnHeaderType.RUN,
+        ColumnHeaderType.VALUE,
+        ColumnHeaderType.COLOR,
+      ]);
+    });
+
+    it('adds new column at the specified index', () => {
+      const nextState = runsReducers.reducers(
+        state,
+        actions.runsTableHeaderAdded({
+          header: {
+            type: ColumnHeaderType.COLOR,
+            name: 'color',
+            displayName: 'Color',
+            enabled: true,
+          },
+          index: 1,
+        })
+      );
+      expect(
+        nextState.ui.runsTableHeaders.map((header) => header.type)
+      ).toEqual([
+        ColumnHeaderType.RUN,
+        ColumnHeaderType.COLOR,
+        ColumnHeaderType.VALUE,
+      ]);
+    });
+  });
+
+  describe('runsTableHeaderRemoved', () => {
+    it('removes all headers with the same name as the provided header', () => {
+      const state = buildRunsState(
+        {},
+        {
+          runsTableHeaders: [
+            {
+              type: ColumnHeaderType.RUN,
+              name: 'run',
+              displayName: 'Run',
+              enabled: true,
+            },
+            {
+              type: ColumnHeaderType.COLOR,
+              name: 'color',
+              displayName: 'Color',
+              enabled: true,
+            },
+          ],
+        }
+      );
+
+      const nextState = runsReducers.reducers(
+        state,
+        actions.runsTableHeaderRemoved({
+          header: {
+            type: ColumnHeaderType.RUN,
+            name: 'run',
+            displayName: 'RUN',
+            enabled: true,
+          },
+        })
+      );
+      expect(nextState.ui.runsTableHeaders).toEqual([
+        {
+          type: ColumnHeaderType.COLOR,
+          name: 'color',
+          displayName: 'Color',
+          enabled: true,
+        },
+      ]);
+    });
+  });
+
+  describe('runsTableHeaderOrderChanged', () => {
+    it('sets the new headers as the runsTableHeaders', () => {
+      const state = buildRunsState(
+        {},
+        {
+          runsTableHeaders: [
+            {
+              type: ColumnHeaderType.RUN,
+              name: 'run',
+              displayName: 'Run',
+              enabled: true,
+            },
+            {
+              type: ColumnHeaderType.COLOR,
+              name: 'color',
+              displayName: 'Color',
+              enabled: true,
+            },
+          ],
+        }
+      );
+
+      const nextState = runsReducers.reducers(
+        state,
+        actions.runsTableHeaderOrderChanged({
+          newHeaderOrder: [
+            {
+              type: ColumnHeaderType.COLOR,
+              name: 'color',
+              displayName: 'Color',
+              enabled: true,
+            },
+            {
+              type: ColumnHeaderType.RUN,
+              name: 'run',
+              displayName: 'Run',
+              enabled: true,
+            },
+          ],
+        })
+      );
+
+      expect(nextState.ui.runsTableHeaders).toEqual([
+        {
+          type: ColumnHeaderType.COLOR,
+          name: 'color',
+          displayName: 'Color',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        },
+      ]);
+    });
+  });
+
+  describe('runsTableSortingInfoChanged', () => {
+    it('returns the current runs table sorting info', () => {
+      const state = buildRunsState(
+        {},
+        {
+          sortingInfo: {
+            name: 'run',
+            order: SortingOrder.ASCENDING,
+          },
+        }
+      );
+      const nextState = runsReducers.reducers(
+        state,
+        actions.runsTableSortingInfoChanged({
+          sortingInfo: {
+            name: 'lr',
+            order: SortingOrder.DESCENDING,
+          },
+        })
+      );
+      expect(nextState.ui.sortingInfo).toEqual({
+        name: 'lr',
+        order: SortingOrder.DESCENDING,
+      });
     });
   });
 });

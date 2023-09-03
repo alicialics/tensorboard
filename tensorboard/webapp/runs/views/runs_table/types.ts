@@ -41,6 +41,12 @@ export interface RunTableItem {
   experimentAlias: ExperimentAlias;
   experimentName: string;
   selected: boolean;
+  runColor: string;
   hparams: Map<string, HparamValue['value']>;
   metrics: Map<string, MetricValue['value']>;
+}
+
+export interface RunTableExperimentItem extends RunTableItem {
+  run: Run & {experimentId: string};
+  runColor: string;
 }

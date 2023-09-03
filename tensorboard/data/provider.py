@@ -15,7 +15,10 @@
 """Experimental framework for generic TensorBoard data providers."""
 
 
+from typing import Collection, Sequence, Tuple, Union
 import abc
+import dataclasses
+import enum
 
 import numpy as np
 
@@ -93,6 +96,24 @@ class DataProvider(metaclass=abc.ABCMeta):
     providers may or may not fully support an empty experiment ID. The
     plugin name should correspond to the `plugin_data.plugin_name` field
     of the `SummaryMetadata` proto passed to `tf.summary.write`.
+
+    Additionally, the data provider interface specifies one *hyperparameter*
+    class, which is metadata about the parameters used to generate the data for
+    one or more runs within one or more experiments. Each hyperparameter has a
+    value type -- one of string, bool, and float. Each one also has a domain,
+    which describes the set of known values for that hyperparameter across the
+    given set of experiments.
+
+    There is a corresponding *hyperparameter value* class, which describes an
+    actual value of a hyperparameter that was logged during experiment
+    execution.
+
+    Each run within an experiment may specify its own value for a
+    hyperparameter. Runs that were logically executed together with the same set
+    of hyperparameter values form a hyperparameter session group. When querying
+    for hyperparameter values for a set of experiments, the result will group
+    runs by hyperparameter session group and provide one set of hyperparameter
+    values for each group.
 
     All methods on this class take a `RequestContext` parameter as the
     first positional argument. This argument is temporarily optional to
@@ -358,6 +379,46 @@ class DataProvider(metaclass=abc.ABCMeta):
         """
         pass
 
+    def list_hyperparameters(self, ctx=None, *, experiment_ids):
+        """List hyperparameters metadata.
+
+        Args:
+          ctx: A TensorBoard `RequestContext` value.
+          experiment_ids: A Collection[string] of IDs of the enclosing
+            experiments.
+
+        Returns:
+          A ListHyperparametersResult describing the hyperparameter-related
+          metadata for the experiments.
+
+        Raises:
+          tensorboard.errors.PublicError: See `DataProvider` class docstring.
+        """
+        return ListHyperparametersResult(hyperparameters=[], session_groups=[])
+
+    def read_hyperparameters(
+        self, ctx=None, *, experiment_ids, filters=None, sort=None
+    ):
+        """Read hyperparameter values.
+
+        Args:
+          ctx: A TensorBoard `RequestContext` value.
+          experiment_ids: A Collection[string] of IDs of the enclosing
+            experiments.
+          filters: A Collection[HyperparameterFilter] that constrain the
+            returned session groups based on hyperparameter value.
+          sort: A Sequence[HyperparameterSort] that specify how the results
+            should be sorted.
+
+        Returns:
+          A Sequence[HyperparameterSessionGroup] describing the groups and
+          their hyperparameter values.
+
+        Raises:
+          tensorboard.errors.PublicError: See `DataProvider` class docstring.
+        """
+        return []
+
 
 class ExperimentMetadata:
     """Metadata about an experiment.
@@ -484,6 +545,211 @@ class Run:
                 "start_time=%r" % (self._start_time,),
             )
         )
+
+
+class HyperparameterDomainType(enum.Enum):
+    """Describes how to represent the set of known values for a hyperparameter."""
+
+    # A range of numeric values. Normally represented as Tuple[float, float].
+    INTERVAL = "interval"
+    # A finite set of numeric values. Normally represented as Collection[float].
+    DISCRETE_FLOAT = "discrete_float"
+    # A finite set of string values. Normally represented as Collection[string].
+    DISCRETE_STRING = "discrete_string"
+    # A finite set of bool values. Normally represented as Collection[bool].
+    DISCRETE_BOOL = "discrete_bool"
+
+
+@dataclasses.dataclass(frozen=True)
+class Hyperparameter:
+    """Metadata about a hyperparameter.
+
+    Attributes:
+      hyperparameter_name: A string identifier for the hyperparameter that
+        should be unique in any result set of Hyperparameter objects.
+      hyperparameter_display_name: A displayable name for the hyperparameter.
+        Unlike hyperparameter_name, there is no uniqueness constraint.
+      domain_type: A HyperparameterDomainType describing how we represent the
+        set of known values in the `domain` attribute.
+      domain: A representation of the set of known values for the
+        hyperparameter.
+
+        If domain_type is INTERVAL, a Tuple[float, float] describing the
+          range of numeric values.
+        If domain_type is DISCRETE_FLOAT, a Collection[float] describing the
+          finite set of numeric values.
+        If domain_type is DISCRETE_STRING, a Collection[string] describing the
+          finite set of string values.
+        If domain_type is DISCRETE_BOOL, a Collection[bool] describing the
+          finite set of bool values.
+
+      differs: Describes whether there are two or more known values for the
+        hyperparameter for the set of experiments specified in the
+        list_hyperparameters() request. Hyperparameters for which this is
+        true are made more prominent or easier to discover in the UI.
+    """
+
+    hyperparameter_name: str
+    hyperparameter_display_name: str
+    domain_type: Union[HyperparameterDomainType, None] = None
+    domain: Union[
+        Tuple[float, float],
+        Collection[float],
+        Collection[str],
+        Collection[bool],
+        None,
+    ] = None
+    differs: bool = False
+
+
+@dataclasses.dataclass(frozen=True)
+class HyperparameterValue:
+    """A hyperparameter value.
+
+    Attributes:
+      hyperparameter_name: A string identifier for the hyperparameters. It
+        corresponds to the hyperparameter_name field in the Hyperparameter
+        class.
+      domain_type: A HyperparameterDomainType describing how we represent the
+        set of known values in the `domain` attribute.
+      value: The value of the hyperparameter.
+
+        If domain_type is INTERVAL or DISCRETE_FLOAT, value is a float.
+        If domain_type is DISCRETE_STRING, value is a str.
+        If domain_type is DISCRETE_BOOL, value is a bool.
+        If domain_type is unknown (None), value is None.
+    """
+
+    hyperparameter_name: str
+    domain_type: Union[HyperparameterDomainType, None] = None
+    value: Union[float, str, bool, None] = None
+
+
+@dataclasses.dataclass(frozen=True)
+class HyperparameterSessionRun:
+    """A single run in a HyperparameterSessionGroup.
+
+    Attributes:
+      experiment_id: The id of the experiment to which the run belongs.
+      run: The name of the run.
+    """
+
+    experiment_id: str
+    run: str
+
+
+@dataclasses.dataclass(frozen=True)
+class HyperparameterSessionGroup:
+    """A group of runs logically executed together with the same hparam values.
+
+    The group of runs may have, for example, combined to generate and test a
+    single model or other artifacts.
+
+    We assume these groups of runs were executed with the same set of
+    hyperparameter values. However, having the same set of hyperparameter values
+    is not sufficient to be considered part of the same group -- different
+    groups can exist with the same hyperparameter values.
+
+    Attributes:
+      root: A descriptor of the common ancestor of all sessions in this
+        group.
+
+        In the case where the group contains all runs in the experiment, this
+        would just be a HyperparameterSessionRun with the experiment_id property
+        set to the experiment's id but run property set to empty.
+
+        In the case where the group contains a subset of runs in the experiment,
+        this would be a HyperparameterSessionRun with the experiment_id property
+        set and the run property set to the largest common prefix for runs.
+
+        The root might correspond to a session within the group but it is not
+        necessary.
+      sessions: A sequence of all sessions in this group.
+      hyperparameter_values: A collection of all hyperparameter values in this
+        group.
+    """
+
+    root: HyperparameterSessionRun
+    sessions: Sequence[HyperparameterSessionRun]
+    hyperparameter_values: Collection[HyperparameterValue]
+
+
+class HyperparameterFilterType(enum.Enum):
+    """Describes how to represent filter values."""
+
+    # A regular expression string. Normally represented as str.
+    REGEX = "regex"
+    # A range of numeric values. Normally represented as Tuple[float, float].
+    INTERVAL = "interval"
+    # A finite set of values. Normally represented as Collection[float|str|bool].
+    DISCRETE = "discrete"
+
+
+@dataclasses.dataclass(frozen=True)
+class HyperparameterFilter:
+    """A constraint based on hyperparameter value.
+
+    Attributes:
+      hyperparameter_name: A string identifier for the hyperparameter to use for
+        the filter. It corresponds to the hyperparameter_name field in the
+        Hyperparameter class.
+      filter_type: A HyperparameterFilterType describing how we represent the
+        filter values in the 'filter' attribute.
+      filter: A representation of the set of the filter values.
+
+        If filter_type is REGEX, a str containing the regular expression.
+        If filter_type is INTERVAL, a Tuple[float, float] describing the min and
+          max values of the filter interval.
+        If filter_type is DISCRETE a Collection[float|str|bool] describing the
+          finite set of filter values.
+    """
+
+    hyperparameter_name: str
+    filter_type: HyperparameterFilterType
+    filter: Union[
+        str,
+        Tuple[float, float],
+        Collection[Union[float, str, bool]],
+    ]
+
+
+class HyperparameterSortDirection(enum.Enum):
+    """Describes which direction to sort a value."""
+
+    # Sort values ascending.
+    ASCENDING = "ascending"
+    # Sort values descending.
+    DESCENDING = "descending"
+
+
+@dataclasses.dataclass(frozen=True)
+class HyperparameterSort:
+    """A sort criterium based on hyperparameter value.
+
+    Attributes:
+      hyperparameter_name: A string identifier for the hyperparameter to use for
+        the sort. It corresponds to the hyperparameter_name field in the
+        Hyperparameter class.
+      sort_direction: The direction to sort.
+    """
+
+    hyperparameter_name: str
+    sort_direction: HyperparameterSortDirection
+
+
+@dataclasses.dataclass(frozen=True)
+class ListHyperparametersResult:
+    """The result from calling list_hyperparameters().
+
+    Attributes:
+      hyperparameters: The hyperparameteres belonging to the experiments in the
+        request.
+      session_groups: The session groups present in the experiments in the
+        request.
+    """
+
+    hyperparameters: Collection[Hyperparameter]
+    session_groups: Collection[HyperparameterSessionGroup]
 
 
 class _TimeSeries:

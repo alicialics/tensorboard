@@ -13,16 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 import {ChangeDetectionStrategy, Component} from '@angular/core';
+import {Store} from '@ngrx/store';
+import {getEnableHparamsInTimeSeries} from '../../feature_flag/store/feature_flag_selectors';
+import {State} from '../../app_state';
+import {getRunsTableFullScreen} from '../../core/store/core_selectors';
 
 @Component({
   selector: 'metrics-dashboard',
   template: `
     <tb-dashboard-layout>
-      <runs-selector sidebar></runs-selector>
-      <metrics-main-view main></metrics-main-view>
+      <runs-selector
+        [showHparamsAndMetrics]="showHparamsAndMetrics$ | async"
+        sidebar
+      ></runs-selector>
+      <metrics-main-view
+        main
+        *ngIf="!(runsTableFullScreen$ | async)"
+      ></metrics-main-view>
     </tb-dashboard-layout>
   `,
   styleUrls: ['metrics_container.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MetricsDashboardContainer {}
+export class MetricsDashboardContainer {
+  showHparamsAndMetrics$ = this.store.select(getEnableHparamsInTimeSeries);
+  runsTableFullScreen$ = this.store.select(getRunsTableFullScreen);
+
+  constructor(readonly store: Store<State>) {}
+}

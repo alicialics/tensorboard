@@ -15,7 +15,7 @@ limitations under the License.
 import {NO_ERRORS_SCHEMA} from '@angular/core';
 import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {FormsModule} from '@angular/forms';
-import {MAT_DIALOG_DATA} from '@angular/material/dialog';
+import {MAT_LEGACY_DIALOG_DATA} from '@angular/material/legacy-dialog';
 import {By} from '@angular/platform-browser';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
 import {Store} from '@ngrx/store';
@@ -55,7 +55,7 @@ describe('metrics/views/data_download_dialog', () => {
       declarations: [DataDownloadDialogContainer, DataDownloadDialogComponent],
       providers: [
         provideMockStore({}),
-        {provide: MAT_DIALOG_DATA, useValue: dialogData},
+        {provide: MAT_LEGACY_DIALOG_DATA, useValue: dialogData},
         {provide: MetricsDataSource, useClass: TestingMetricsDataSource},
       ],
       schemas: [NO_ERRORS_SCHEMA],
@@ -258,7 +258,9 @@ describe('metrics/views/data_download_dialog', () => {
     const pathAndQueries = downloadLinks.map((link) => {
       return link.nativeElement.href.slice(link.nativeElement.origin.length);
     });
-    expect(pathAndQueries).toEqual(['', '']);
+    // Karma seems to inject this value when using [href] instead of
+    // [attr.href] in the template.
+    expect(pathAndQueries).toEqual(['/context.html', '/context.html']);
   });
 
   it('forms correct url even if run names are all the same', async () => {

@@ -27,13 +27,13 @@ import {
   flushMicrotasks,
   TestBed,
 } from '@angular/core/testing';
-import {MatCheckboxModule} from '@angular/material/checkbox';
-import {MatDialogModule} from '@angular/material/dialog';
-import {MatMenuModule} from '@angular/material/menu';
-import {MatPaginatorModule} from '@angular/material/paginator';
-import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
+import {MatLegacyCheckboxModule} from '@angular/material/legacy-checkbox';
+import {MatLegacyDialogModule} from '@angular/material/legacy-dialog';
+import {MatLegacyMenuModule} from '@angular/material/legacy-menu';
+import {MatLegacyPaginatorModule} from '@angular/material/legacy-paginator';
+import {MatLegacyProgressSpinnerModule} from '@angular/material/legacy-progress-spinner';
 import {MatSortModule} from '@angular/material/sort';
-import {MatTableModule} from '@angular/material/table';
+import {MatLegacyTableModule} from '@angular/material/legacy-table';
 import {By} from '@angular/platform-browser';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
 import {Action, Store} from '@ngrx/store';
@@ -44,6 +44,7 @@ import {buildExperimentRouteFromId} from '../../../app_routing/testing';
 import {RouteKind} from '../../../app_routing/types';
 import {State} from '../../../app_state';
 import {buildExperiment} from '../../../experiments/store/testing';
+import {getEnableHparamsInTimeSeries} from '../../../feature_flag/store/feature_flag_selectors';
 import {
   actions as hparamsActions,
   selectors as hparamsSelectors,
@@ -71,6 +72,8 @@ import {
   getRunSelectorRegexFilter,
   getRunSelectorSort,
   getRunsLoadState,
+  getRunsTableHeaders,
+  getRunsTableSortingInfo,
 } from '../../../selectors';
 import {selectors as settingsSelectors} from '../../../settings';
 import {buildColorPalette} from '../../../settings/testing';
@@ -97,11 +100,17 @@ import {DomainType} from '../../data_source/runs_data_source_types';
 import {MAX_NUM_RUNS_TO_ENABLE_BY_DEFAULT, Run} from '../../store/runs_types';
 import {buildRun} from '../../store/testing';
 import {GroupByKey, SortType} from '../../types';
+import {RunsDataTable} from './runs_data_table';
 import {RunsGroupMenuButtonComponent} from './runs_group_menu_button_component';
 import {RunsGroupMenuButtonContainer} from './runs_group_menu_button_container';
 import {RunsTableComponent} from './runs_table_component';
 import {RunsTableContainer, TEST_ONLY} from './runs_table_container';
-import {HparamSpec, MetricSpec, RunsTableColumn} from './types';
+import {HparamSpec, MetricSpec, RunTableItem, RunsTableColumn} from './types';
+import {
+  ColumnHeaderType,
+  SortingOrder,
+} from '../../../widgets/data_table/types';
+import {getFilteredRenderableRuns} from '../../../metrics/views/main_view/common_selectors';
 
 @Injectable()
 class ColorPickerTestHelper {
@@ -165,7 +174,8 @@ describe('runs_table', () => {
   function createComponent(
     experimentIds: string[],
     columns?: RunsTableColumn[],
-    usePagination?: boolean
+    usePagination?: boolean,
+    forceLegacyTable?: boolean
   ) {
     const fixture = TestBed.createComponent(RunsTableContainer);
     fixture.componentInstance.experimentIds = experimentIds;
@@ -175,6 +185,7 @@ describe('runs_table', () => {
     if (usePagination !== undefined) {
       fixture.componentInstance.usePagination = usePagination;
     }
+    fixture.componentInstance.forceLegacyTable = forceLegacyTable ?? false;
     fixture.detectChanges();
 
     return fixture;
@@ -227,24 +238,24 @@ describe('runs_table', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [
-        MatCheckboxModule,
-        MatDialogModule,
+        MatLegacyCheckboxModule,
+        MatLegacyDialogModule,
         MatIconTestingModule,
-        MatMenuModule,
-        MatPaginatorModule,
-        MatProgressSpinnerModule,
+        MatLegacyMenuModule,
+        MatLegacyPaginatorModule,
+        MatLegacyProgressSpinnerModule,
         MatSortModule,
-        MatTableModule,
+        MatLegacyTableModule,
         NoopAnimationsModule,
         FilterInputModule,
         RangeInputModule,
         ExperimentAliasModule,
       ],
       declarations: [
+        RunsDataTable,
         RunsGroupMenuButtonComponent,
         RunsGroupMenuButtonContainer,
         RunsTableComponent,
-        RunsTableContainer,
         RunsTableContainer,
         TestableColorPicker,
       ],
@@ -305,6 +316,7 @@ describe('runs_table', () => {
       settingsSelectors.getColorPalette,
       buildColorPalette()
     );
+    store.overrideSelector(getEnableHparamsInTimeSeries, false);
     dispatchSpy = spyOn(store, 'dispatch').and.callFake((action: Action) => {
       actualActions.push(action);
     });
@@ -1858,7 +1870,7 @@ describe('runs_table', () => {
 
   describe('"too many runs" alert', () => {
     function createRuns(runCount: number): Run[] {
-      const runs = [];
+      const runs: Run[] = [];
       for (let i = 0; i < runCount; i++) {
         runs.push(
           buildRun({
@@ -2961,6 +2973,129 @@ describe('runs_table', () => {
           expect(action.type).not.toBe(runSelectorSortChanged.type);
         }
       });
+
+      describe('runs data table integration', () => {
+        beforeEach(() => {
+          store.overrideSelector(getEnableHparamsInTimeSeries, true);
+          store.overrideSelector(getFilteredRenderableRuns, [
+            {
+              run: buildRun({
+                id: 'id1',
+                name: 'Book 1',
+                hparams: [{name: 'qaz', value: 0.5}],
+              }),
+              experimentAlias: {aliasNumber: 0, aliasText: 'hp'},
+              experimentName: 'HP',
+              selected: true,
+              runColor: 'fff',
+              hparams: new Map([['qaz', 0.5]]),
+              metrics: new Map<string, any>(),
+            },
+            {
+              run: buildRun({
+                id: 'id2',
+                name: 'Book 2',
+                hparams: [{name: 'qaz', value: 0.5}],
+              }),
+              experimentAlias: {aliasNumber: 0, aliasText: 'hp'},
+              experimentName: 'HP',
+              selected: true,
+              runColor: 'fff',
+              hparams: new Map([['qaz', 0.5]]),
+              metrics: new Map<string, any>(),
+            },
+          ]);
+
+          store.overrideSelector(getRunsTableHeaders, [
+            {
+              type: ColumnHeaderType.HPARAM,
+              name: 'foo',
+              displayName: 'Foo',
+              enabled: true,
+              removable: true,
+              filterable: true,
+              sortable: true,
+              movable: true,
+            },
+            {
+              type: ColumnHeaderType.HPARAM,
+              name: 'qaz',
+              displayName: 'Qaz',
+              enabled: true,
+              removable: true,
+              filterable: true,
+              sortable: true,
+              movable: true,
+            },
+          ]);
+        });
+
+        it('adds interval filters', () => {
+          const fixture = createComponent(TEST_HPARAM_SPECS, TEST_METRIC_SPECS);
+          fixture.detectChanges();
+          const dataTable = fixture.debugElement.query(
+            By.directive(RunsDataTable)
+          );
+
+          dataTable.componentInstance.addFilter.emit({
+            header: {
+              name: 'qaz',
+            },
+            value: {
+              type: DomainType.INTERVAL,
+              includeUndefined: true,
+              filterLowerValue: 10,
+              filterUpperValue: 20,
+              minValue: 10,
+              maxValue: 20,
+            },
+          });
+          expect(dispatchSpy).toHaveBeenCalledWith(
+            hparamsActions.dashboardHparamFilterAdded({
+              name: 'qaz',
+              filter: {
+                type: DomainType.INTERVAL,
+                includeUndefined: true,
+                filterLowerValue: 10,
+                filterUpperValue: 20,
+                minValue: 10,
+                maxValue: 20,
+              },
+            })
+          );
+        });
+
+        it('adds discrete filters', () => {
+          const fixture = createComponent(TEST_HPARAM_SPECS, TEST_METRIC_SPECS);
+          fixture.detectChanges();
+          const dataTable = fixture.debugElement.query(
+            By.directive(RunsDataTable)
+          );
+
+          dataTable.componentInstance.addFilter.emit({
+            header: {
+              name: 'foo',
+            },
+            value: {
+              type: DomainType.DISCRETE,
+              includeUndefined: true,
+              filterValues: [2, 4, 6, 8],
+              possibleValues: [2, 4, 6, 8, 10],
+            },
+          });
+          expect(dispatchSpy).toHaveBeenCalledWith(
+            hparamsActions.dashboardHparamFilterAdded({
+              name: 'foo',
+              filter: {
+                type: DomainType.DISCRETE,
+                includeUndefined: true,
+                filterValues: [2, 4, 6, 8],
+                possibleValues: [2, 4, 6, 8, 10],
+              },
+            })
+          );
+        });
+      });
     });
 
     function setNoFilterHparamsAndMetrics(
@@ -3166,6 +3301,371 @@ describe('runs_table', () => {
           ['Book 2', '128', '0.91', ''],
           ['Book 1', '32', '', ''],
         ]);
+      });
+    });
+  });
+
+  describe('runs data table', () => {
+    beforeEach(() => {
+      store.overrideSelector(getEnableHparamsInTimeSeries, true);
+    });
+
+    it('renders data table when hparam flag is on', () => {
+      const fixture = createComponent(['book']);
+      fixture.detectChanges();
+
+      expect(
+        fixture.debugElement.query(By.directive(RunsDataTable))
+      ).toBeTruthy();
+      expect(
+        fixture.nativeElement.querySelector('runs-table-component')
+      ).toBeFalsy();
+    });
+
+    it('renders legacy table when forceLegacyTable is true', () => {
+      const fixture = createComponent(['book'], [], false, true);
+      expect(
+        fixture.debugElement.query(By.directive(RunsDataTable))
+      ).toBeFalsy();
+      expect(
+        fixture.nativeElement.querySelector('runs-table-component')
+      ).toBeTruthy();
+    });
+
+    it('passes run name, experiment alias, selected value, and color to data table', () => {
+      // To make sure we only return the runs when called with the right props.
+      const selectSpy = spyOn(store, 'select').and.callThrough();
+      selectSpy.withArgs(getFilteredRenderableRuns).and.returnValue(
+        of([
+          {
+            run: buildRun({id: 'book1', name: "The Philosopher's Stone"}),
+            runColor: '#000',
+            experimentAlias: {aliasText: 'book', aliasNumber: 1},
+            selected: true,
+            hparams: new Map(),
+          },
+          {
+            run: buildRun({id: 'book2', name: 'The Chamber Of Secrets'}),
+            runColor: '#111',
+            experimentAlias: {aliasText: 'book', aliasNumber: 1},
+            selected: false,
+            hparams: new Map(),
+          },
+        ])
+      );
+
+      const fixture = createComponent(['book']);
+      fixture.detectChanges();
+      const runsDataTable = fixture.debugElement.query(
+        By.directive(RunsDataTable)
+      );
+
+      expect(runsDataTable.componentInstance.data).toEqual([
+        {
+          id: 'book1',
+          color: '#000',
+          run: "The Philosopher's Stone",
+          experimentAlias: {aliasNumber: 1, aliasText: 'book'},
+          selected: true,
+        },
+        {
+          id: 'book2',
+          color: '#111',
+          run: 'The Chamber Of Secrets',
+          experimentAlias: {aliasNumber: 1, aliasText: 'book'},
+          selected: false,
+        },
+      ]);
+    });
+
+    it('passes hparam values to data table', () => {
+      const run1 = buildRun({id: 'book1', name: "The Philosopher's Stone"});
+      const run2 = buildRun({id: 'book2', name: 'The Chamber Of Secrets'});
+      // To make sure we only return the runs when called with the right props.
+      const selectSpy = spyOn(store, 'select').and.callThrough();
+      selectSpy
+        .withArgs(getRuns, {experimentId: 'book'})
+        .and.returnValue(of([run1, run2]));
+
+      selectSpy.withArgs(getRunsTableHeaders).and.returnValue(
+        of([
+          {
+            type: ColumnHeaderType.HPARAM,
+            name: 'batch_size',
+            displayName: 'Batch Size',
+            enabled: true,
+          },
+        ])
+      );
+
+      selectSpy.withArgs(getFilteredRenderableRuns).and.returnValue(
+        of([
+          {
+            run: run1,
+            hparams: new Map([['batch_size', 1]]),
+          } as RunTableItem,
+          {
+            run: run2,
+            hparams: new Map([['batch_size', 2]]),
+          } as RunTableItem,
+        ])
+      );
+
+      store.overrideSelector(getRunColorMap, {
+        book1: '#000',
+        book2: '#111',
+      });
+
+      const fixture = createComponent(['book']);
+      fixture.detectChanges();
+      const runsDataTable = fixture.debugElement.query(
+        By.directive(RunsDataTable)
+      );
+
+      expect(runsDataTable.componentInstance.data[0].batch_size).toEqual(1);
+      expect(runsDataTable.componentInstance.data[1].batch_size).toEqual(2);
+    });
+
+    describe('sorting', () => {
+      beforeEach(() => {
+        const run1 = buildRun({id: 'run1', name: 'bbb'});
+        const run2 = buildRun({id: 'run2', name: 'aaa'});
+        const run3 = buildRun({id: 'run3', name: 'ccc'});
+        store.overrideSelector(getRuns, [run1, run2, run3]);
+
+        store.overrideSelector(getRunsTableHeaders, [
+          {
+            type: ColumnHeaderType.RUN,
+            name: 'run',
+            displayName: 'Run',
+            enabled: true,
+          },
+          {
+            type: ColumnHeaderType.HPARAM,
+            name: 'batch_size',
+            displayName: 'Batch Size',
+            enabled: true,
+          },
+          {
+            type: ColumnHeaderType.HPARAM,
+            name: 'good_hparam',
+            displayName: 'Really Good',
+            enabled: true,
+          },
+          {
+            type: ColumnHeaderType.HPARAM,
+            name: 'scarce',
+            displayName: 'Missing Data',
+            enabled: true,
+          },
+        ]);
+
+        store.overrideSelector(getFilteredRenderableRuns, [
+          {
+            run: run1,
+            experimentAlias: {aliasNumber: 1, aliasText: 'bbb'},
+            hparams: new Map<string, number | string | boolean>([
+              ['batch_size', 2],
+              ['good_hparam', false],
+              ['scarce', 'aaa'],
+            ]),
+          } as RunTableItem,
+          {
+            run: run2,
+            experimentAlias: {aliasNumber: 2, aliasText: 'ccc'},
+            hparams: new Map<string, number | string | boolean>([
+              ['batch_size', 1],
+              ['good_hparam', true],
+            ]),
+          } as RunTableItem,
+          {
+            run: run3,
+            experimentAlias: {aliasNumber: 3, aliasText: 'aaa'},
+            hparams: new Map<string, number | string | boolean>([
+              ['batch_size', 3],
+              ['good_hparam', false],
+              ['scarce', 'ccc'],
+            ]),
+          } as RunTableItem,
+        ]);
+      });
+
+      it('sorts string values', () => {
+        store.overrideSelector(getRunsTableSortingInfo, {
+          name: 'run',
+          order: SortingOrder.ASCENDING,
+        });
+        const fixture = createComponent(['book']);
+        const runsDataTable = fixture.debugElement.query(
+          By.directive(RunsDataTable)
+        );
+
+        expect(runsDataTable.componentInstance.data[0]['run']).toEqual('aaa');
+        expect(runsDataTable.componentInstance.data[1]['run']).toEqual('bbb');
+        expect(runsDataTable.componentInstance.data[2]['run']).toEqual('ccc');
+
+        store.overrideSelector(getRunsTableSortingInfo, {
+          name: 'run',
+          order: SortingOrder.DESCENDING,
+        });
+        store.refreshState();
+        fixture.detectChanges();
+
+        expect(runsDataTable.componentInstance.data[0]['run']).toEqual('ccc');
+        expect(runsDataTable.componentInstance.data[1]['run']).toEqual('bbb');
+        expect(runsDataTable.componentInstance.data[2]['run']).toEqual('aaa');
+      });
+
+      it('sorts number values', () => {
+        store.overrideSelector(getRunsTableSortingInfo, {
+          name: 'batch_size',
+          order: SortingOrder.ASCENDING,
+        });
+        const fixture = createComponent(['book']);
+        const runsDataTable = fixture.debugElement.query(
+          By.directive(RunsDataTable)
+        );
+
+        expect(runsDataTable.componentInstance.data[0]['batch_size']).toEqual(
+          1
+        );
+        expect(runsDataTable.componentInstance.data[1]['batch_size']).toEqual(
+          2
+        );
+        expect(runsDataTable.componentInstance.data[2]['batch_size']).toEqual(
+          3
+        );
+
+        store.overrideSelector(getRunsTableSortingInfo, {
+          name: 'batch_size',
+          order: SortingOrder.DESCENDING,
+        });
+        store.refreshState();
+        fixture.detectChanges();
+
+        expect(runsDataTable.componentInstance.data[0]['batch_size']).toEqual(
+          3
+        );
+        expect(runsDataTable.componentInstance.data[1]['batch_size']).toEqual(
+          2
+        );
+        expect(runsDataTable.componentInstance.data[2]['batch_size']).toEqual(
+          1
+        );
+      });
+
+      it('sorts boolean values', () => {
+        store.overrideSelector(getRunsTableSortingInfo, {
+          name: 'good_hparam',
+          order: SortingOrder.ASCENDING,
+        });
+        const fixture = createComponent(['book']);
+        const runsDataTable = fixture.debugElement.query(
+          By.directive(RunsDataTable)
+        );
+
+        expect(
+          runsDataTable.componentInstance.data[0]['good_hparam']
+        ).toBeFalse();
+        expect(
+          runsDataTable.componentInstance.data[1]['good_hparam']
+        ).toBeFalse();
+        expect(
+          runsDataTable.componentInstance.data[2]['good_hparam']
+        ).toBeTrue();
+
+        store.overrideSelector(getRunsTableSortingInfo, {
+          name: 'good_hparam',
+          order: SortingOrder.DESCENDING,
+        });
+        store.refreshState();
+        fixture.detectChanges();
+
+        expect(
+          runsDataTable.componentInstance.data[0]['good_hparam']
+        ).toBeTrue();
+        expect(
+          runsDataTable.componentInstance.data[1]['good_hparam']
+        ).toBeFalse();
+        expect(
+          runsDataTable.componentInstance.data[2]['good_hparam']
+        ).toBeFalse();
+      });
+
+      it('sorts scarce values with undefined values always below defined ones.', () => {
+        store.overrideSelector(getRunsTableSortingInfo, {
+          name: 'scarce',
+          order: SortingOrder.ASCENDING,
+        });
+        const fixture = createComponent(['book']);
+        const runsDataTable = fixture.debugElement.query(
+          By.directive(RunsDataTable)
+        );
+
+        expect(runsDataTable.componentInstance.data[0]['scarce']).toEqual(
+          'aaa'
+        );
+        expect(runsDataTable.componentInstance.data[1]['scarce']).toEqual(
+          'ccc'
+        );
+        expect(
+          runsDataTable.componentInstance.data[2]['scarce']
+        ).toBeUndefined();
+
+        store.overrideSelector(getRunsTableSortingInfo, {
+          name: 'scarce',
+          order: SortingOrder.DESCENDING,
+        });
+        store.refreshState();
+        fixture.detectChanges();
+
+        expect(runsDataTable.componentInstance.data[0]['scarce']).toEqual(
+          'ccc'
+        );
+        expect(runsDataTable.componentInstance.data[1]['scarce']).toEqual(
+          'aaa'
+        );
+        expect(
+          runsDataTable.componentInstance.data[2]['scarce']
+        ).toBeUndefined();
+      });
+
+      it('sorts experiment alias by alias number.', () => {
+        store.overrideSelector(getRunsTableSortingInfo, {
+          name: 'experimentAlias',
+          order: SortingOrder.ASCENDING,
+        });
+        const fixture = createComponent(['book']);
+        const runsDataTable = fixture.debugElement.query(
+          By.directive(RunsDataTable)
+        );
+
+        expect(
+          runsDataTable.componentInstance.data[0]['experimentAlias'].aliasNumber
+        ).toEqual(1);
+        expect(
+          runsDataTable.componentInstance.data[1]['experimentAlias'].aliasNumber
+        ).toEqual(2);
+        expect(
+          runsDataTable.componentInstance.data[2]['experimentAlias'].aliasNumber
+        ).toEqual(3);
+
+        store.overrideSelector(getRunsTableSortingInfo, {
+          name: 'experimentAlias',
+          order: SortingOrder.DESCENDING,
+        });
+        store.refreshState();
+        fixture.detectChanges();
+
+        expect(
+          runsDataTable.componentInstance.data[0]['experimentAlias'].aliasNumber
+        ).toEqual(3);
+        expect(
+          runsDataTable.componentInstance.data[1]['experimentAlias'].aliasNumber
+        ).toEqual(2);
+        expect(
+          runsDataTable.componentInstance.data[2]['experimentAlias'].aliasNumber
+        ).toEqual(1);
       });
     });
   });

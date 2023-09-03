@@ -31,7 +31,6 @@ import {
   TooltipSort,
   XAxisType,
 } from '../../types';
-import {LinkedTimeSelectionChanged} from './types';
 
 const SLIDER_AUDIT_TIME_MS = 250;
 
@@ -64,10 +63,7 @@ const MAX_SMOOTHING_SLIDER_VALUE = 0.99;
 export class SettingsViewComponent {
   constructor(@Inject(LOCALE_ID) private readonly locale: string) {}
 
-  @Input() isLinkedTimeFeatureEnabled!: boolean;
-  @Input() isRangeSelectionAllowed!: boolean;
   @Input() isLinkedTimeEnabled!: boolean;
-  @Input() isScalarStepSelectorFeatureEnabled!: boolean;
   @Input() isScalarStepSelectorEnabled!: boolean;
   @Input() isScalarStepSelectorRangeEnabled!: boolean;
   @Input() isScalarColumnCustomizationEnabled!: boolean;
@@ -76,8 +72,6 @@ export class SettingsViewComponent {
   @Input() isSlideOutMenuOpen!: boolean;
 
   @Output() linkedTimeToggled = new EventEmitter<void>();
-  @Output()
-  linkedTimeSelectionChanged = new EventEmitter<LinkedTimeSelectionChanged>();
 
   @Output() stepSelectorToggled = new EventEmitter<void>();
   @Output() rangeSelectionToggled = new EventEmitter<void>();

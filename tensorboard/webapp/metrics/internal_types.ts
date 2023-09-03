@@ -18,7 +18,7 @@ import {
   ColumnHeader,
   ColumnHeaderType,
   DataTableMode,
-} from './views/card_renderer/scalar_card_types';
+} from '../widgets/data_table/types';
 
 export {HistogramMode, TimeSelection};
 
@@ -100,8 +100,9 @@ export interface HeaderEditInfo {
 }
 
 export interface HeaderToggleInfo {
-  dataTableMode: DataTableMode;
-  headerType: ColumnHeaderType;
+  header: ColumnHeader;
+  cardId?: CardId;
+  dataTableMode?: DataTableMode;
 }
 
 export const SCALARS_SMOOTHING_MIN = 0;

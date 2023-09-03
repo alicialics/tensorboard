@@ -17,11 +17,36 @@ import {CommonModule} from '@angular/common';
 import {NgModule} from '@angular/core';
 import {MatIconModule} from '@angular/material/icon';
 import {DataTableComponent} from './data_table_component';
+import {HeaderCellComponent} from './header_cell_component';
 import {DataTableHeaderModule} from './data_table_header_module';
+import {ContentCellComponent} from './content_cell_component';
+import {ContentRowComponent} from './content_row_component';
+import {ColumnSelectorModule} from './column_selector_module';
+import {CustomModalModule} from '../custom_modal/custom_modal_module';
+import {MatLegacyButtonModule} from '@angular/material/legacy-button';
+import {FilterDialogModule} from './filter_dialog_module';
 
 @NgModule({
-  declarations: [DataTableComponent],
-  exports: [DataTableComponent],
-  imports: [CommonModule, MatIconModule, DataTableHeaderModule],
+  declarations: [
+    ContentCellComponent,
+    ContentRowComponent,
+    DataTableComponent,
+    HeaderCellComponent,
+  ],
+  exports: [
+    ContentCellComponent,
+    ContentRowComponent,
+    DataTableComponent,
+    HeaderCellComponent,
+  ],
+  imports: [
+    CommonModule,
+    MatIconModule,
+    MatLegacyButtonModule,
+    DataTableHeaderModule,
+    CustomModalModule,
+    ColumnSelectorModule,
+    FilterDialogModule,
+  ],
 })
 export class DataTableModule {}

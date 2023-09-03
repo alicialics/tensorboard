@@ -96,7 +96,7 @@ limitations under the License.
         <button
           *ngIf="columnCustomizationEnabled"
           mat-menu-item
-          (click)="openSlideoutColumnEditMenu.emit()"
+          (click)="openTableEditMenu()"
           aria-label="Open menu to edit data table columns"
         >
           <mat-icon svgIcon="edit_24px"></mat-icon>
@@ -121,6 +121,7 @@ limitations under the License.
       [ignoreYOutliers]="ignoreOutliers"
       [tooltipTemplate]="tooltip"
       [useDarkMode]="useDarkMode"
+      [userViewBox]="userViewBox"
       (onViewBoxOverridden)="isViewBoxOverridden = $event"
       (viewBoxChanged)="onLineChartZoom.emit($event)"
       [customVisTemplate]="lineChartCustomVis"
@@ -199,8 +200,10 @@ limitations under the License.
       [sortingInfo]="sortingInfo"
       [columnCustomizationEnabled]="columnCustomizationEnabled"
       [smoothingEnabled]="smoothingEnabled"
+      [hparamsEnabled]="hparamsEnabled"
       (sortDataBy)="sortDataBy($event)"
-      (orderColumns)="reorderColumnHeaders.emit($event)"
+      (editColumnHeaders)="editColumnHeaders.emit($event)"
+      (removeColumn)="removeColumn.emit($event)"
     >
     </scalar-card-data-table>
   </div>
@@ -274,7 +277,6 @@ limitations under the License.
       [minMaxHorizontalViewExtend]="viewExtent.x"
       [minMaxStep]="minMaxStep"
       [axisSize]="domDim.width"
-      [isProspectiveFobFeatureEnabled]="isProspectiveFobFeatureEnabled"
       (onTimeSelectionChanged)="onTimeSelectionChanged.emit($event)"
       (onTimeSelectionToggled)="onFobRemoved()"
     ></scalar-card-fob-controller>

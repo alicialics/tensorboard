@@ -1,3 +1,49 @@
+# Release 2.14.0
+
+The 2.14 minor series tracks TensorFlow 2.14.
+
+## Features
+
+- Small data table and step selector usability and accessibility improvements (#6372, #6409, #6410, #6431)
+
+## Bug Fixes
+
+- Embedding Projector plugin improvements
+  - Fix tSNE tweaking hyperparams (#6320, thanks @alicialics)
+  - Some visualization and usability improvements (#6373, #6326, #6325, #6429, thanks @alicialics)
+- Graph plugin: Fix rendering issue for tensors with zero dimension size (#6420)
+- HParams plugin: A couple fixes related to boolean and NaN values (#6393, #6496)
+
+## Breaking Changes
+
+- Drops support for Python 3.8.
+
+# Release 2.13.0
+
+The 2.13 minor series tracks TensorFlow 2.13
+
+## Bug Fixes
+
+- Several improvements to the projector plugin (thank you @alicialics)
+  - Embedding Projector: fix regex suffix css (#6329)
+  - Embedding Projector: fix bookmark projection state (#6328)
+  - Embedding Projector: fix dark mode button contrast (#6327)
+  - Embedding Projector: update tsne learning rate during iteration (#6319)
+
+# Release 2.12.3
+
+## Bug Fixes
+
+- Redirects the unsupported What-If Tool plugin to the supported [Learning
+  Interpretability Tool](https://pair-code.github.io/lit/) to avoid protobuf
+  compatibility errors (#6343)
+
+# Release 2.12.2
+
+## Bug Fixes
+
+- Fixes scalar chart rendering in Safari (#6303)
+
 # Release 2.12.1
 
 ## Bug Fixes

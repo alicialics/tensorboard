@@ -22,7 +22,7 @@ import {
   Output,
   ViewChild,
 } from '@angular/core';
-import {MatDialog} from '@angular/material/dialog';
+import {MatLegacyDialog} from '@angular/material/legacy-dialog';
 import {DataLoadState} from '../../../types/data';
 import {
   TimeSelection,
@@ -44,17 +44,19 @@ import {
   TooltipDatum,
 } from '../../../widgets/line_chart_v2/types';
 import {CardState} from '../../store';
-import {TooltipSort, XAxisType} from '../../types';
+import {HeaderEditInfo, TooltipSort, XAxisType} from '../../types';
 import {
-  ColumnHeader,
-  ColumnHeaderType,
   MinMaxStep,
   ScalarCardDataSeries,
   ScalarCardSeriesMetadata,
   ScalarCardSeriesMetadataMap,
+} from './scalar_card_types';
+import {
+  ColumnHeader,
+  DataTableMode,
   SortingInfo,
   SortingOrder,
-} from './scalar_card_types';
+} from '../../../widgets/data_table/types';
 import {isDatumVisible, TimeSelectionView} from './utils';
 
 type ScalarTooltipDatum = TooltipDatum<
@@ -95,9 +97,11 @@ export class ScalarCardComponent<Downloader> {
   @Input() columnCustomizationEnabled!: boolean;
   @Input() linkedTimeSelection: TimeSelectionView | undefined;
   @Input() stepOrLinkedTimeSelection: TimeSelection | undefined;
-  @Input() isProspectiveFobFeatureEnabled: Boolean = false;
   @Input() minMaxStep!: MinMaxStep;
+  @Input() userViewBox!: Extent | null;
   @Input() columnHeaders!: ColumnHeader[];
+  @Input() rangeEnabled!: boolean;
+  @Input() hparamsEnabled?: boolean;
 
   @Output() onFullSizeToggle = new EventEmitter<void>();
   @Output() onPinClicked = new EventEmitter<boolean>();
@@ -108,10 +112,11 @@ export class ScalarCardComponent<Downloader> {
   @Output() onStepSelectorToggled =
     new EventEmitter<TimeSelectionToggleAffordance>();
   @Output() onDataTableSorting = new EventEmitter<SortingInfo>();
-  @Output() reorderColumnHeaders = new EventEmitter<ColumnHeader[]>();
-  @Output() openSlideoutColumnEditMenu = new EventEmitter<void>();
+  @Output() editColumnHeaders = new EventEmitter<HeaderEditInfo>();
+  @Output() openTableEditMenuToMode = new EventEmitter<DataTableMode>();
+  @Output() removeColumn = new EventEmitter<ColumnHeader>();
 
-  @Output() onLineChartZoom = new EventEmitter<Extent>();
+  @Output() onLineChartZoom = new EventEmitter<Extent | null>();
 
   @Output() onCardStateChanged = new EventEmitter<Partial<CardState>>();
 
@@ -119,14 +124,17 @@ export class ScalarCardComponent<Downloader> {
   @ViewChild(LineChartComponent)
   lineChart?: LineChartComponent;
   sortingInfo: SortingInfo = {
-    header: ColumnHeaderType.RUN,
+    name: 'run',
     order: SortingOrder.ASCENDING,
   };
 
   @ViewChild('dataTableContainer')
   dataTableContainer?: ElementRef;
 
-  constructor(private readonly ref: ElementRef, private dialog: MatDialog) {}
+  constructor(
+    private readonly ref: ElementRef,
+    private dialog: MatLegacyDialog
+  ) {}
 
   yScaleType = ScaleType.LINEAR;
   isViewBoxOverridden: boolean = false;
@@ -243,11 +251,7 @@ export class ScalarCardComponent<Downloader> {
   }
 
   showFobController() {
-    return (
-      this.xAxisType === XAxisType.STEP &&
-      this.minMaxStep &&
-      (this.stepOrLinkedTimeSelection || this.isProspectiveFobFeatureEnabled)
-    );
+    return this.xAxisType === XAxisType.STEP && this.minMaxStep;
   }
 
   canExpandTable() {
@@ -281,5 +285,12 @@ export class ScalarCardComponent<Downloader> {
     if (this.dataTableContainer) {
       this.dataTableContainer.nativeElement.style.height = '';
     }
+  }
+
+  openTableEditMenu() {
+    const currentTableMode = this.rangeEnabled
+      ? DataTableMode.RANGE
+      : DataTableMode.SINGLE;
+    this.openTableEditMenuToMode.emit(currentTableMode);
   }
 }

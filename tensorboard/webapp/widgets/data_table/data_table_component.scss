@@ -18,15 +18,21 @@ limitations under the License.
 $_accent: map-get(mat.get-color-config($tb-theme), accent);
 
 .data-table {
-  border-spacing: 4px;
   font-size: 13px;
+  display: table;
   width: 100%;
 
-  th {
+  .header {
+    display: table-row;
+    z-index: 1;
+  }
+
+  .header {
     background-color: mat.get-color-from-palette($tb-background, background);
     position: sticky;
     text-align: left;
     top: 0;
+    font-weight: bold;
     vertical-align: bottom;
 
     &:hover {
@@ -37,71 +43,41 @@ $_accent: map-get(mat.get-color-config($tb-theme), accent);
       background-color: map-get($tb-dark-background, background);
     }
   }
+}
 
-  .cell {
-    align-items: center;
-    display: flex;
+.add-button-cell {
+  display: table-cell;
+  width: 40px;
+}
+
+.context-menu {
+  border-radius: 4px;
+  border: 1px solid;
+  box-shadow: 0px 4px 4px rgba(0, 0, 0, 0.25);
+  border-color: mat.get-color-from-palette($tb-foreground, border);
+  background-color: mat.get-color-from-palette($tb-background, background);
+
+  @include tb-dark-theme {
+    border-color: mat.get-color-from-palette($tb-dark-foreground, border);
+    background-color: mat.get-color-from-palette(
+      $tb-dark-background,
+      'background'
+    );
   }
 
-  .extra-right-padding {
-    // Add artificial padding to keep consistent with icons which have whitespace
-    padding-right: 1px;
+  .context-menu-button {
+    text-align: left;
+    width: 100%;
   }
 
-  .row {
-    white-space: nowrap;
+  .no-actions-message {
+    padding: 8px;
+    text-wrap: nowrap;
   }
 
-  $_circle-size: 12px;
-
-  .row-circle {
-    align-items: center;
-    display: inline-flex;
-    height: $_circle-size;
-    width: $_circle-size;
-  }
-
-  .row-circle > span {
-    border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    display: inline-block;
-    // Subtract by border width (1px on both sides)
-    height: $_circle-size - 2px;
-    width: $_circle-size - 2px;
-  }
-
-  .cell mat-icon {
-    height: 12px;
-    width: 12px;
-  }
-
-  .sorting-icon-container {
-    width: 12px;
-    height: 12px;
-    border-radius: 5px;
-  }
-
-  .show {
-    opacity: 1;
-  }
-
-  .show-on-hover {
-    opacity: 0;
-  }
-
-  th:hover .show-on-hover {
-    opacity: 0.3;
-  }
-
-  .highlight {
-    background-color: mat.get-color-from-palette(mat.$gray-palette, 200);
-  }
-
-  .highlight-border-right {
-    border-right: 2px solid mat.get-color-from-palette($_accent);
-  }
-
-  .highlight-border-left {
-    border-left: 2px solid mat.get-color-from-palette($_accent);
+  .sort-button {
+    ::ng-deep path {
+      fill: unset;
+    }
   }
 }

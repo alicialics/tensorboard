@@ -126,24 +126,10 @@ export const getIsMetricsImageSupportEnabled = createSelector(
   }
 );
 
-export const getIsLinkedTimeEnabled = createSelector(
-  getFeatureFlags,
-  (flags: FeatureFlags): boolean => {
-    return flags.enabledLinkedTime;
-  }
-);
-
 export const getForceSvgFeatureFlag = createSelector(
   getFeatureFlags,
   (flags: FeatureFlags): boolean => {
     return flags.forceSvg;
-  }
-);
-
-export const getIsDataTableEnabled = createSelector(
-  getFeatureFlags,
-  (flags: FeatureFlags): boolean => {
-    return flags.enabledScalarDataTable;
   }
 );
 
@@ -154,23 +140,16 @@ export const getShowFlagsEnabled = createSelector(
   }
 );
 
-export const getAllowRangeSelection = createSelector(
-  getFeatureFlags,
-  (flags: FeatureFlags): boolean => {
-    return flags.allowRangeSelection;
-  }
-);
-
-export const getIsLinkedTimeProspectiveFobEnabled = createSelector(
-  getFeatureFlags,
-  (flags: FeatureFlags): boolean => {
-    return flags.enabledProspectiveFob;
-  }
-);
-
 export const getIsScalarColumnCustomizationEnabled = createSelector(
   getFeatureFlags,
   (flags: FeatureFlags): boolean => {
     return flags.enableScalarColumnCustomization;
+  }
+);
+
+export const getEnableHparamsInTimeSeries = createSelector(
+  getFeatureFlags,
+  (flags: FeatureFlags): boolean => {
+    return flags.enableHparamsInTimeSeries;
   }
 );

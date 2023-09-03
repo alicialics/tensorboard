@@ -16,6 +16,9 @@ import {Injectable} from '@angular/core';
 import {Observable} from 'rxjs';
 import * as backendTypes from './runs_backend_types';
 
+import {DomainType} from '../../widgets/data_table/types';
+export {DomainType} from '../../widgets/data_table/types';
+
 export {
   BackendHparamsValueType as HparamsValueType,
   DatasetType,
@@ -41,11 +44,6 @@ export interface RunToHparamsAndMetrics {
   };
 }
 
-export enum DomainType {
-  DISCRETE,
-  INTERVAL,
-}
-
 interface IntervalDomain {
   type: DomainType.INTERVAL;
   minValue: number;
@@ -63,7 +61,8 @@ export interface HparamSpec
   domain: Domain;
 }
 
-export interface MetricSpec extends Omit<backendTypes.MetricSpec, 'name'> {
+// TODO(rileyajones) merge these types by deleting this one.
+export interface MetricSpec extends backendTypes.MetricSpec {
   tag: string;
 }
 
@@ -86,3 +85,8 @@ export abstract class RunsDataSource {
     experimentId: string
   ): Observable<HparamsAndMetadata>;
 }
+
+export type RunToHParamValues = Record<
+  string,
+  Map<string, HparamValue['value']>
+>;

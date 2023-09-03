@@ -29,7 +29,19 @@ import {
   getIdFromExperimentIds,
 } from './utils';
 
-const initialState: HparamsState = {specs: {}, filters: {}};
+const initialState: HparamsState = {
+  specs: {},
+  filters: {},
+  dashboardSpecs: {
+    hparams: [],
+    metrics: [],
+  },
+  dashboardSessionGroups: [],
+  dashboardFilters: {
+    hparams: new Map(),
+    metrics: new Map(),
+  },
+};
 
 const reducer: ActionReducer<HparamsState, Action> = createReducer(
   initialState,
@@ -350,6 +362,40 @@ const reducer: ActionReducer<HparamsState, Action> = createReducer(
     return {
       ...state,
       specs: eidToHparams,
+    };
+  }),
+  on(actions.hparamsFetchSessionGroupsSucceeded, (state, action) => {
+    const nextDashboardSpecs = action.hparamsAndMetricsSpecs;
+    const nextDashboardSessionGroups = action.sessionGroups;
+
+    return {
+      ...state,
+      dashboardSpecs: nextDashboardSpecs,
+      dashboardSessionGroups: nextDashboardSessionGroups,
+    };
+  }),
+  on(actions.dashboardHparamFilterAdded, (state, action) => {
+    const nextHparamFilters = new Map(state.dashboardFilters.hparams);
+    nextHparamFilters.set(action.name, action.filter);
+
+    return {
+      ...state,
+      dashboardFilters: {
+        ...state.dashboardFilters,
+        hparams: nextHparamFilters,
+      },
+    };
+  }),
+  on(actions.dashboardMetricFilterAdded, (state, action) => {
+    const nextMetricFilters = new Map(state.dashboardFilters.metrics);
+    nextMetricFilters.set(action.name, action.filter);
+
+    return {
+      ...state,
+      dashboardFilters: {
+        ...state.dashboardFilters,
+        metrics: nextMetricFilters,
+      },
     };
   })
 );

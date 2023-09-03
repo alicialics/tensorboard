@@ -26,6 +26,10 @@ import {
   RUNS_FEATURE_KEY,
 } from './runs_types';
 import {createGroupBy} from './utils';
+import {ColumnHeader, SortingInfo} from '../../widgets/data_table/types';
+import {getDashboardRunsToHparamsAndMetrics} from '../../hparams/_redux/hparams_selectors';
+import {RunToHparamsAndMetrics} from '../../hparams/types';
+import {getExperimentIdsFromRoute} from '../../app_routing/store/app_routing_selectors';
 
 const getRunsState = createFeatureSelector<RunsState>(RUNS_FEATURE_KEY);
 
@@ -68,6 +72,8 @@ export const getRun = createSelector(
 
 /**
  * Returns Observable that emits runs list for an experiment.
+ * This is intended to be used in the experiment_list page.
+ * TODO(rileyajones) remove usage of this selector from the timeseries dashboard.
  */
 export const getRuns = createSelector(
   getDataState,
@@ -76,6 +82,40 @@ export const getRuns = createSelector(
     return runIds
       .filter((id) => Boolean(state.runMetadata[id]))
       .map((id) => state.runMetadata[id]);
+  }
+);
+
+/**
+ * Get the runs used on the dashboard.
+ * TODO(rileyajones) get the experiment ids from the state rather than as an argument.
+ * @param experimentIds
+ * @returns
+ */
+export const getDashboardRuns = createSelector(
+  getDataState,
+  getExperimentIdsFromRoute,
+  getDashboardRunsToHparamsAndMetrics,
+  (
+    state: RunsDataState,
+    experimentIds: string[] | null,
+    runsToHparamsAndMetrics: RunToHparamsAndMetrics
+  ): Array<Run & {experimentId: string}> => {
+    if (!experimentIds) {
+      return [];
+    }
+    return experimentIds
+      .map((experimentId) => {
+        return (state.runIds[experimentId] || [])
+          .filter((id) => Boolean(state.runMetadata[id]))
+          .map((runId) => {
+            const run = {...state.runMetadata[runId], experimentId};
+            run.hparams = runsToHparamsAndMetrics[runId]?.hparams ?? null;
+            run.metrics = runsToHparamsAndMetrics[runId]?.metrics ?? null;
+
+            return run;
+          });
+      })
+      .flat();
   }
 );
 
@@ -218,5 +258,25 @@ export const getColorGroupRegexString = createSelector(
   getDataState,
   (state: RunsDataState): string => {
     return state.colorGroupRegexString;
+  }
+);
+
+/**
+ * Gets the columns to be displayed by the runs table.
+ */
+export const getRunsTableHeaders = createSelector(
+  getUiState,
+  (state: RunsUiState): ColumnHeader[] => {
+    return state.runsTableHeaders;
+  }
+);
+
+/**
+ * Gets the information needed to sort the runs data table.
+ */
+export const getRunsTableSortingInfo = createSelector(
+  getUiState,
+  (state: RunsUiState): SortingInfo => {
+    return state.sortingInfo;
   }
 );

@@ -15,10 +15,11 @@ limitations under the License.
 import {CommonModule} from '@angular/common';
 import {NgModule} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {MatButtonModule} from '@angular/material/button';
-import {MatDialogModule} from '@angular/material/dialog';
-import {MatInputModule} from '@angular/material/input';
-import {MatSelectModule} from '@angular/material/select';
+import {MatLegacyButtonModule} from '@angular/material/legacy-button';
+import {MatLegacyDialogModule} from '@angular/material/legacy-dialog';
+import {MatLegacyInputModule} from '@angular/material/legacy-input';
+import {MatLegacySelectModule} from '@angular/material/legacy-select';
+import {FeatureFlagDirectiveModule} from '../../../feature_flag/directives/feature_flag_directive_module';
 import {MetricsDataSourceModule} from '../../data_source';
 import {DataDownloadDialogComponent} from './data_download_dialog_component';
 import {DataDownloadDialogContainer} from './data_download_dialog_container';
@@ -28,11 +29,12 @@ import {DataDownloadDialogContainer} from './data_download_dialog_container';
   exports: [DataDownloadDialogContainer],
   imports: [
     CommonModule,
+    FeatureFlagDirectiveModule,
     FormsModule,
-    MatButtonModule,
-    MatDialogModule,
-    MatInputModule,
-    MatSelectModule,
+    MatLegacyButtonModule,
+    MatLegacyDialogModule,
+    MatLegacyInputModule,
+    MatLegacySelectModule,
     MetricsDataSourceModule,
   ],
   entryComponents: [DataDownloadDialogContainer],

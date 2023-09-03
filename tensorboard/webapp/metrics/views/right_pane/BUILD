@@ -25,15 +25,14 @@ tf_ng_module(
         "settings_view_component.ng.html",
     ],
     deps = [
-        ":types",
         "//tensorboard/webapp:app_state",
         "//tensorboard/webapp:selectors",
-        "//tensorboard/webapp/angular:expect_angular_material_button",
+        "//tensorboard/webapp/angular:expect_angular_legacy_material_button",
+        "//tensorboard/webapp/angular:expect_angular_legacy_material_checkbox",
+        "//tensorboard/webapp/angular:expect_angular_legacy_material_select",
+        "//tensorboard/webapp/angular:expect_angular_legacy_material_slider",
         "//tensorboard/webapp/angular:expect_angular_material_button_toggle",
-        "//tensorboard/webapp/angular:expect_angular_material_checkbox",
         "//tensorboard/webapp/angular:expect_angular_material_icon",
-        "//tensorboard/webapp/angular:expect_angular_material_select",
-        "//tensorboard/webapp/angular:expect_angular_material_slider",
         "//tensorboard/webapp/feature_flag",
         "//tensorboard/webapp/metrics:types",
         "//tensorboard/webapp/metrics/actions",
@@ -49,17 +48,6 @@ tf_ng_module(
 )
 
 tf_ts_library(
-    name = "types",
-    srcs = [
-        "types.ts",
-    ],
-    deps = [
-        "//tensorboard/webapp/metrics:types",
-        "//tensorboard/webapp/widgets/range_input:types",
-    ],
-)
-
-tf_ts_library(
     name = "right_pane_test",
     testonly = True,
     srcs = [
@@ -70,10 +58,10 @@ tf_ts_library(
         "//tensorboard/webapp:app_state",
         "//tensorboard/webapp:selectors",
         "//tensorboard/webapp/angular:expect_angular_core_testing",
+        "//tensorboard/webapp/angular:expect_angular_legacy_material_checkbox",
+        "//tensorboard/webapp/angular:expect_angular_legacy_material_select",
+        "//tensorboard/webapp/angular:expect_angular_legacy_material_slider",
         "//tensorboard/webapp/angular:expect_angular_material_button_toggle",
-        "//tensorboard/webapp/angular:expect_angular_material_checkbox",
-        "//tensorboard/webapp/angular:expect_angular_material_select",
-        "//tensorboard/webapp/angular:expect_angular_material_slider",
         "//tensorboard/webapp/angular:expect_angular_platform_browser_animations",
         "//tensorboard/webapp/angular:expect_ngrx_store_testing",
         "//tensorboard/webapp/metrics:types",

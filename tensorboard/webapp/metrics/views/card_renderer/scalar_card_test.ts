@@ -30,13 +30,16 @@ import {
   TestBed,
   tick,
 } from '@angular/core/testing';
-import {MatDialogModule, MAT_DIALOG_DATA} from '@angular/material/dialog';
-import {MatMenuModule} from '@angular/material/menu';
-import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
+import {
+  MatLegacyDialogModule,
+  MAT_LEGACY_DIALOG_DATA,
+} from '@angular/material/legacy-dialog';
+import {MatLegacyMenuModule} from '@angular/material/legacy-menu';
+import {MatLegacyProgressSpinnerModule} from '@angular/material/legacy-progress-spinner';
 import {By} from '@angular/platform-browser';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
 import {Action, Store} from '@ngrx/store';
-import {MockStore, provideMockStore} from '@ngrx/store/testing';
+import {MockStore} from '@ngrx/store/testing';
 import {Observable, of, ReplaySubject} from 'rxjs';
 import {State} from '../../../app_state';
 import {ExperimentAlias} from '../../../experiments/types';
@@ -75,12 +78,14 @@ import {
 import {ResizeDetectorTestingModule} from '../../../widgets/resize_detector_testing_module';
 import {TruncatedPathModule} from '../../../widgets/text/truncated_path_module';
 import {
-  cardMinMaxChanged,
+  cardViewBoxChanged,
   metricsCardFullSizeToggled,
   metricsCardStateUpdated,
   stepSelectorToggled,
   timeSelectionChanged,
   metricsSlideoutMenuOpened,
+  dataTableColumnEdited,
+  dataTableColumnToggled,
 } from '../../actions';
 import {PluginType} from '../../data_source';
 import {
@@ -98,8 +103,6 @@ import {
   getSingleSelectionHeaders,
 } from '../../store';
 import {
-  appStateFromMetricsState,
-  buildMetricsState,
   buildScalarStepData,
   provideMockCardRunToSeriesData,
 } from '../../testing';
@@ -109,14 +112,24 @@ import {ScalarCardContainer} from './scalar_card_container';
 import {ScalarCardDataTable} from './scalar_card_data_table';
 import {ScalarCardFobController} from './scalar_card_fob_controller';
 import {
-  ColumnHeader,
-  ColumnHeaderType,
   ScalarCardPoint,
   ScalarCardSeriesMetadata,
   SeriesType,
-  SortingOrder,
 } from './scalar_card_types';
+import {
+  ColumnHeader,
+  ColumnHeaderType,
+  DataTableMode,
+  SortingOrder,
+} from '../../../widgets/data_table/types';
 import {VisLinkedTimeSelectionWarningModule} from './vis_linked_time_selection_warning_module';
+import {Extent} from '../../../widgets/line_chart_v2/lib/public_types';
+import {provideMockTbStore} from '../../../testing/utils';
+import * as commonSelectors from '../main_view/common_selectors';
+import {CardFeatureOverride} from '../../store/metrics_types';
+import {ContentCellComponent} from '../../../widgets/data_table/content_cell_component';
+import {ContentRowComponent} from '../../../widgets/data_table/content_row_component';
+import {HeaderCellComponent} from '../../../widgets/data_table/header_cell_component';
 
 @Component({
   selector: 'line-chart',
@@ -151,6 +164,7 @@ class TestableLineChart {
   @Input() useDarkMode?: boolean;
   @Input()
   tooltipTemplate!: TemplateRef<{data: TooltipDatum[]}>;
+  @Input() userViewBox?: Extent;
 
   @Input()
   customChartOverlayTemplate!: TemplateRef<{}>;
@@ -206,7 +220,7 @@ class TestableLineChart {
 })
 class TestableDataDownload {
   cardId = 'hello';
-  constructor(@Inject(MAT_DIALOG_DATA) data: {cardId: string}) {
+  constructor(@Inject(MAT_LEGACY_DIALOG_DATA) data: {cardId: string}) {
     this.cardId = data.cardId;
   }
 }
@@ -322,10 +336,10 @@ describe('scalar card', () => {
         IntersectionObserverTestingModule,
         CardFobModule,
         DataTableModule,
-        MatDialogModule,
+        MatLegacyDialogModule,
         MatIconTestingModule,
-        MatMenuModule,
-        MatProgressSpinnerModule,
+        MatLegacyMenuModule,
+        MatLegacyProgressSpinnerModule,
         NoopAnimationsModule,
         ResizeDetectorTestingModule,
         TruncatedPathModule,
@@ -339,11 +353,7 @@ describe('scalar card', () => {
         TestableDataDownload,
         TestableLineChart,
       ],
-      providers: [
-        provideMockStore({
-          initialState: appStateFromMetricsState(buildMetricsState()),
-        }),
-      ],
+      providers: [provideMockTbStore()],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
 
@@ -379,9 +389,10 @@ describe('scalar card', () => {
     );
     store.overrideSelector(selectors.getMetricsStepSelectorEnabled, false);
     store.overrideSelector(
-      selectors.getIsLinkedTimeProspectiveFobEnabled,
-      true
+      selectors.getMetricsCardRangeSelectionEnabled,
+      false
     );
+    store.overrideSelector(selectors.getMetricsCardUserViewBox, null);
 
     dispatchedActions = [];
     spyOn(store, 'dispatch').and.callFake((action: Action) => {
@@ -472,6 +483,10 @@ describe('scalar card', () => {
       store.overrideSelector(
         selectors.getCurrentRouteRunSelection,
         new Map([['run1', true]])
+      );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1'])
       );
       store.overrideSelector(selectors.getMetricsXAxisType, XAxisType.STEP);
       selectSpy
@@ -748,6 +763,10 @@ describe('scalar card', () => {
         selectors.getCurrentRouteRunSelection,
         new Map([['run1', true]])
       );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1'])
+      );
     });
 
     const expectedPoints = {
@@ -843,18 +862,39 @@ describe('scalar card', () => {
       flush();
     }));
 
-    it('dispatches metricsSlideoutMenuOpened when edit columns button is clicked', fakeAsync(() => {
+    it('dispatches metricsSlideoutMenuOpened with mode SINGLE when range disabled for card', fakeAsync(() => {
       store.overrideSelector(
         selectors.getIsScalarColumnCustomizationEnabled,
         true
       );
+      store.overrideSelector(getMetricsCardRangeSelectionEnabled, false);
       const fixture = createComponent('card1');
 
       openOverflowMenu(fixture);
       getMenuButton('Open menu to edit data table columns').click();
       fixture.detectChanges();
 
-      expect(dispatchedActions[0]).toEqual(metricsSlideoutMenuOpened());
+      expect(dispatchedActions[0]).toEqual(
+        metricsSlideoutMenuOpened({mode: DataTableMode.SINGLE})
+      );
+      flush();
+    }));
+
+    it('dispatches metricsSlideoutMenuOpened with mode RANGE when range enabled for card', fakeAsync(() => {
+      store.overrideSelector(
+        selectors.getIsScalarColumnCustomizationEnabled,
+        true
+      );
+      store.overrideSelector(getMetricsCardRangeSelectionEnabled, true);
+      const fixture = createComponent('card1');
+
+      openOverflowMenu(fixture);
+      getMenuButton('Open menu to edit data table columns').click();
+      fixture.detectChanges();
+
+      expect(dispatchedActions[0]).toEqual(
+        metricsSlideoutMenuOpened({mode: DataTableMode.RANGE})
+      );
       flush();
     }));
   });
@@ -2483,10 +2523,41 @@ describe('scalar card', () => {
 
     describe('scalar card data table', () => {
       beforeEach(() => {
+        store.overrideSelector(getMetricsLinkedTimeSelection, {
+          start: {step: 20},
+          end: null,
+        });
+        store.overrideSelector(getSingleSelectionHeaders, [
+          {
+            type: ColumnHeaderType.RUN,
+            name: 'run',
+            displayName: 'Run',
+            enabled: true,
+          },
+          {
+            type: ColumnHeaderType.VALUE,
+            name: 'value',
+            displayName: 'Value',
+            enabled: false,
+          },
+          {
+            type: ColumnHeaderType.STEP,
+            name: 'step',
+            displayName: 'Step',
+            enabled: true,
+          },
+        ]);
         const runToSeries = {
-          run1: [buildScalarStepData({step: 10})],
-          run2: [buildScalarStepData({step: 20})],
-          run3: [buildScalarStepData({step: 30})],
+          run1: [
+            {wallTime: 1, value: 1, step: 1},
+            {wallTime: 2, value: 10, step: 2},
+            {wallTime: 3, value: 20, step: 3},
+          ],
+          run2: [
+            {wallTime: 1, value: 1, step: 1},
+            {wallTime: 2, value: 10, step: 2},
+            {wallTime: 3, value: 20, step: 3},
+          ],
         };
         provideMockCardRunToSeriesData(
           selectSpy,
@@ -2494,6 +2565,17 @@ describe('scalar card', () => {
           'card1',
           null /* metadataOverride */,
           runToSeries
+        );
+        store.overrideSelector(
+          selectors.getCurrentRouteRunSelection,
+          new Map([
+            ['run1', true],
+            ['run2', true],
+          ])
+        );
+        store.overrideSelector(
+          commonSelectors.getFilteredRenderableRunsIds,
+          new Set(['run1', 'run2'])
         );
         store.overrideSelector(getCardStateMap, {
           card1: {
@@ -2569,10 +2651,135 @@ describe('scalar card', () => {
 
         expect(dataTableComponent).toBeFalsy();
       }));
+
+      it('projects tb-data-table-header-cell for color and enabled headers', fakeAsync(() => {
+        store.overrideSelector(getMetricsLinkedTimeSelection, {
+          start: {step: 20},
+          end: null,
+        });
+        store.overrideSelector(getSingleSelectionHeaders, [
+          {
+            type: ColumnHeaderType.RUN,
+            name: 'run',
+            displayName: 'Run',
+            enabled: true,
+          },
+          {
+            type: ColumnHeaderType.VALUE,
+            name: 'value',
+            displayName: 'Value',
+            enabled: false,
+          },
+          {
+            type: ColumnHeaderType.STEP,
+            name: 'step',
+            displayName: 'Step',
+            enabled: true,
+          },
+        ]);
+        const fixture = createComponent('card1');
+        fixture.detectChanges();
+
+        const dataTableComponentInstance = fixture.debugElement.query(
+          By.directive(DataTableComponent)
+        ).componentInstance;
+
+        expect(dataTableComponentInstance.headerCells.length).toEqual(3);
+
+        expect(
+          dataTableComponentInstance.headerCells.get(0).header.name
+        ).toEqual('color');
+        expect(
+          dataTableComponentInstance.headerCells.get(1).header.name
+        ).toEqual('run');
+        expect(
+          dataTableComponentInstance.headerCells.get(2).header.name
+        ).toEqual('step');
+      }));
+
+      it('projects tb-data-table-content-cell with data for enabled headers', fakeAsync(() => {
+        const fixture = createComponent('card1');
+        const scalarCardDataTable = fixture.debugElement.query(
+          By.directive(ScalarCardDataTable)
+        );
+        fixture.detectChanges();
+
+        const data =
+          scalarCardDataTable.componentInstance.getTimeSelectionTableData();
+
+        const contentRowComponents = fixture.debugElement.queryAll(
+          By.directive(ContentRowComponent)
+        );
+
+        expect(contentRowComponents.length).toEqual(2);
+
+        const firstRowContentCells = contentRowComponents[0].queryAll(
+          By.directive(ContentCellComponent)
+        );
+
+        expect(firstRowContentCells.length).toEqual(3);
+
+        expect(
+          firstRowContentCells.map((cell) => cell.componentInstance.datum)
+        ).toEqual([data[0].color, data[0].run, data[0].step]);
+
+        const secondRowContentCells = contentRowComponents[1].queryAll(
+          By.directive(ContentCellComponent)
+        );
+
+        expect(secondRowContentCells.length).toEqual(3);
+
+        expect(
+          secondRowContentCells.map((cell) => cell.componentInstance.datum)
+        ).toEqual([data[1].color, data[1].run, data[1].step]);
+      }));
+
+      it('does not project smoothed column when smoothing is disabled', fakeAsync(() => {
+        store.overrideSelector(getSingleSelectionHeaders, [
+          {
+            type: ColumnHeaderType.RUN,
+            name: 'run',
+            displayName: 'Run',
+            enabled: true,
+          },
+          {
+            type: ColumnHeaderType.SMOOTHED,
+            name: 'smoothed',
+            displayName: 'Smoothed',
+            enabled: true,
+          },
+        ]);
+
+        store.overrideSelector(selectors.getMetricsScalarSmoothing, 0);
+
+        const fixture = createComponent('card1');
+        const scalarCardDataTable = fixture.debugElement.query(
+          By.directive(ScalarCardDataTable)
+        );
+        fixture.detectChanges();
+
+        let dataTableComponentInstance = fixture.debugElement.query(
+          By.directive(DataTableComponent)
+        ).componentInstance;
+
+        let contentCellTypes = scalarCardDataTable
+          .queryAll(By.directive(ContentCellComponent))
+          .map((cell) => cell.componentInstance.header.type);
+
+        expect(
+          dataTableComponentInstance.headerCells.find(
+            (cell: HeaderCellComponent) =>
+              cell.header.type === ColumnHeaderType.SMOOTHED
+          )
+        ).toBeFalsy();
+        expect(
+          contentCellTypes.find((type) => type === ColumnHeaderType.SMOOTHED)
+        ).toBeFalsy();
+      }));
     });
 
     describe('line chart integration', () => {
-      it('updates minMax value when line chart is zoomed', fakeAsync(async () => {
+      it('updates viewBox value when line chart is zoomed', fakeAsync(async () => {
         const runToSeries = {
           run1: [buildScalarStepData({step: 10})],
           run2: [buildScalarStepData({step: 20})],
@@ -2603,24 +2810,29 @@ describe('scalar card', () => {
           x: [9.235, 30.4],
           y: [0, 100],
         });
-
         fixture.componentInstance.onLineChartZoom({
           x: [8, 31],
           y: [0, 100],
         });
+        fixture.componentInstance.onLineChartZoom(null);
+
         expect(dispatchedActions).toEqual([
-          cardMinMaxChanged({
-            minMax: {
-              minStep: 10,
-              maxStep: 30,
+          cardViewBoxChanged({
+            userViewBox: {
+              x: [9.235, 30.4],
+              y: [0, 100],
             },
             cardId: 'card1',
           }),
-          cardMinMaxChanged({
-            minMax: {
-              minStep: 8,
-              maxStep: 31,
+          cardViewBoxChanged({
+            userViewBox: {
+              x: [8, 31],
+              y: [0, 100],
             },
+            cardId: 'card1',
+          }),
+          cardViewBoxChanged({
+            userViewBox: null,
             cardId: 'card1',
           }),
         ]);
@@ -2631,27 +2843,119 @@ describe('scalar card', () => {
   describe('getTimeSelectionTableData', () => {
     beforeEach(() => {
       store.overrideSelector(getMetricsLinkedTimeEnabled, true);
+      // These tests now rely on the selector getColumnHeadersForCard which in turn
+      // relies on these selectors.
       store.overrideSelector(getSingleSelectionHeaders, [
-        {type: ColumnHeaderType.RUN, enabled: true},
-        {type: ColumnHeaderType.SMOOTHED, enabled: true},
-        {type: ColumnHeaderType.VALUE, enabled: true},
-        {type: ColumnHeaderType.STEP, enabled: true},
-        {type: ColumnHeaderType.RELATIVE_TIME, enabled: true},
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.SMOOTHED,
+          name: 'smoothed',
+          displayName: 'Smoothed',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.VALUE,
+          name: 'value',
+          displayName: 'Value',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.STEP,
+          name: 'step',
+          displayName: 'Step',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.RELATIVE_TIME,
+          name: 'relativeTime',
+          displayName: 'Relative',
+          enabled: true,
+        },
       ]);
       store.overrideSelector(getRangeSelectionHeaders, [
-        {type: ColumnHeaderType.RUN, enabled: true},
-        {type: ColumnHeaderType.MIN_VALUE, enabled: true},
-        {type: ColumnHeaderType.MAX_VALUE, enabled: true},
-        {type: ColumnHeaderType.START_VALUE, enabled: true},
-        {type: ColumnHeaderType.END_VALUE, enabled: true},
-        {type: ColumnHeaderType.VALUE_CHANGE, enabled: true},
-        {type: ColumnHeaderType.PERCENTAGE_CHANGE, enabled: true},
-        {type: ColumnHeaderType.START_STEP, enabled: true},
-        {type: ColumnHeaderType.END_STEP, enabled: true},
-        {type: ColumnHeaderType.STEP_AT_MAX, enabled: true},
-        {type: ColumnHeaderType.STEP_AT_MIN, enabled: true},
-        {type: ColumnHeaderType.MEAN, enabled: true},
-        {type: ColumnHeaderType.RAW_CHANGE, enabled: true},
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.MIN_VALUE,
+          name: 'minValue',
+          displayName: 'Min Value',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.MAX_VALUE,
+          name: 'maxValue',
+          displayName: 'Max Value',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.START_VALUE,
+          name: 'startValue',
+          displayName: 'Start Value',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.END_VALUE,
+          name: 'endValue',
+          displayName: 'End Value',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.VALUE_CHANGE,
+          name: 'valueChange',
+          displayName: 'Value',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.PERCENTAGE_CHANGE,
+          name: 'percentageChange',
+          displayName: '%',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.START_STEP,
+          name: 'startStep',
+          displayName: 'Start Step',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.END_STEP,
+          name: 'endStep',
+          displayName: 'End Step',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.STEP_AT_MAX,
+          name: 'stepAtMax',
+          displayName: 'Step At Max',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.STEP_AT_MIN,
+          name: 'stepAtMin',
+          displayName: 'Step At Min',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.MEAN,
+          name: 'mean',
+          displayName: 'Mean',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.RAW_CHANGE,
+          name: 'rawChange',
+          displayName: 'Raw',
+          enabled: true,
+        },
       ]);
       store.overrideSelector(getCardStateMap, {
         card1: {
@@ -2691,6 +2995,10 @@ describe('scalar card', () => {
           ['run2', true],
         ])
       );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2'])
+      );
 
       store.overrideSelector(getMetricsLinkedTimeSelection, {
         start: {step: 2},
@@ -2709,21 +3017,21 @@ describe('scalar card', () => {
       expect(data).toEqual([
         {
           id: 'run1',
-          COLOR: '#fff',
-          RELATIVE_TIME: 1000,
-          RUN: 'run1',
-          STEP: 2,
-          VALUE: 10,
-          SMOOTHED: 10,
+          color: '#fff',
+          relativeTime: 1000,
+          run: 'run1',
+          step: 2,
+          value: 10,
+          smoothed: 10,
         },
         {
           id: 'run2',
-          COLOR: '#fff',
-          RELATIVE_TIME: 1000,
-          RUN: 'run2',
-          STEP: 2,
-          VALUE: 10,
-          SMOOTHED: 10,
+          color: '#fff',
+          relativeTime: 1000,
+          run: 'run2',
+          step: 2,
+          value: 10,
+          smoothed: 10,
         },
       ]);
     }));
@@ -2749,12 +3057,17 @@ describe('scalar card', () => {
         runToSeries
       );
       store.overrideSelector(getMetricsRangeSelectionEnabled, true);
+      store.overrideSelector(getMetricsCardRangeSelectionEnabled, true);
       store.overrideSelector(
         selectors.getCurrentRouteRunSelection,
         new Map([
           ['run1', true],
           ['run2', true],
         ])
+      );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2'])
       );
 
       store.overrideSelector(getMetricsLinkedTimeSelection, {
@@ -2774,37 +3087,37 @@ describe('scalar card', () => {
       expect(data).toEqual([
         {
           id: 'run1',
-          COLOR: '#fff',
-          RUN: 'run1',
-          VALUE_CHANGE: 19,
-          START_STEP: 1,
-          END_STEP: 3,
-          START_VALUE: 1,
-          END_VALUE: 20,
-          MIN_VALUE: 1,
-          MAX_VALUE: 20,
-          PERCENTAGE_CHANGE: 19, // percentage change from 1 to 20 is 1900%
-          STEP_AT_MAX: 3,
-          STEP_AT_MIN: 1,
-          MEAN: 11,
-          RAW_CHANGE: 19,
+          color: '#fff',
+          run: 'run1',
+          valueChange: 19,
+          startStep: 1,
+          endStep: 3,
+          startValue: 1,
+          endValue: 20,
+          minValue: 1,
+          maxValue: 20,
+          percentageChange: 19, // percentage change from 1 to 20 is 1900%
+          stepAtMax: 3,
+          stepAtMin: 1,
+          mean: 11,
+          rawChange: 19,
         },
         {
           id: 'run2',
-          COLOR: '#fff',
-          RUN: 'run2',
-          VALUE_CHANGE: 24,
-          START_STEP: 1,
-          END_STEP: 3,
-          START_VALUE: 1,
-          END_VALUE: 25,
-          MIN_VALUE: 1,
-          MAX_VALUE: 25,
-          PERCENTAGE_CHANGE: 24, // percentage change from 1 to 25 is 2400%
-          STEP_AT_MAX: 3,
-          STEP_AT_MIN: 1,
-          MEAN: 12,
-          RAW_CHANGE: 24,
+          color: '#fff',
+          run: 'run2',
+          valueChange: 24,
+          startStep: 1,
+          endStep: 3,
+          startValue: 1,
+          endValue: 25,
+          minValue: 1,
+          maxValue: 25,
+          percentageChange: 24, // percentage change from 1 to 25 is 2400%
+          stepAtMax: 3,
+          stepAtMin: 1,
+          mean: 12,
+          rawChange: 24,
         },
       ]);
     }));
@@ -2826,9 +3139,14 @@ describe('scalar card', () => {
         runToSeries
       );
       store.overrideSelector(getMetricsRangeSelectionEnabled, true);
+      store.overrideSelector(getMetricsCardRangeSelectionEnabled, true);
       store.overrideSelector(
         selectors.getCurrentRouteRunSelection,
         new Map([['run1', true]])
+      );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1'])
       );
 
       store.overrideSelector(selectors.getMetricsScalarSmoothing, 0.3);
@@ -2850,20 +3168,20 @@ describe('scalar card', () => {
       expect(data).toEqual([
         {
           id: '["smoothed","run1"]',
-          COLOR: '#fff',
-          RUN: 'run1',
-          VALUE_CHANGE: 10.515172900494004,
-          START_STEP: 2,
-          END_STEP: 4,
-          START_VALUE: 8.46153846153846,
-          END_VALUE: 18.976711362032464,
-          MIN_VALUE: 4.532374100719424,
-          MAX_VALUE: 18.976711362032464,
-          PERCENTAGE_CHANGE: 1.2427022518765645,
-          STEP_AT_MAX: 4,
-          STEP_AT_MIN: 3,
-          MEAN: 12,
-          RAW_CHANGE: 17,
+          color: '#fff',
+          run: 'run1',
+          valueChange: 10.515172900494004,
+          startStep: 2,
+          endStep: 4,
+          startValue: 8.46153846153846,
+          endValue: 18.976711362032464,
+          minValue: 4.532374100719424,
+          maxValue: 18.976711362032464,
+          percentageChange: 1.2427022518765645,
+          stepAtMax: 4,
+          stepAtMin: 3,
+          mean: 12,
+          rawChange: 17,
         },
       ]);
     }));
@@ -2887,9 +3205,14 @@ describe('scalar card', () => {
         runToSeries
       );
       store.overrideSelector(getMetricsRangeSelectionEnabled, true);
+      store.overrideSelector(getMetricsCardRangeSelectionEnabled, true);
       store.overrideSelector(
         selectors.getCurrentRouteRunSelection,
         new Map([['run1', true]])
+      );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1'])
       );
 
       store.overrideSelector(getMetricsLinkedTimeSelection, {
@@ -2909,20 +3232,20 @@ describe('scalar card', () => {
       expect(data).toEqual([
         {
           id: 'run1',
-          COLOR: '#fff',
-          RUN: 'run1',
-          VALUE_CHANGE: 10,
-          START_STEP: 2,
-          END_STEP: 5,
-          START_VALUE: 5,
-          END_VALUE: 15,
-          MIN_VALUE: 4,
-          MAX_VALUE: 20,
-          PERCENTAGE_CHANGE: 2,
-          STEP_AT_MAX: 4,
-          STEP_AT_MIN: 3,
-          MEAN: 11,
-          RAW_CHANGE: 10,
+          color: '#fff',
+          run: 'run1',
+          valueChange: 10,
+          startStep: 2,
+          endStep: 5,
+          startValue: 5,
+          endValue: 15,
+          minValue: 4,
+          maxValue: 20,
+          percentageChange: 2,
+          stepAtMax: 4,
+          stepAtMin: 3,
+          mean: 11,
+          rawChange: 10,
         },
       ]);
     }));
@@ -2954,6 +3277,10 @@ describe('scalar card', () => {
           ['run2', true],
         ])
       );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2'])
+      );
 
       store.overrideSelector(getMetricsLinkedTimeSelection, {
         start: {step: 18},
@@ -2969,8 +3296,8 @@ describe('scalar card', () => {
       const data =
         scalarCardDataTable.componentInstance.getTimeSelectionTableData();
 
-      expect(data[0].STEP).toEqual(20);
-      expect(data[1].STEP).toEqual(15);
+      expect(data[0].step).toEqual(20);
+      expect(data[1].step).toEqual(15);
     }));
 
     it('selects closest start and end points to ranged time selection', fakeAsync(() => {
@@ -2994,12 +3321,17 @@ describe('scalar card', () => {
         runToSeries
       );
       store.overrideSelector(getMetricsRangeSelectionEnabled, true);
+      store.overrideSelector(getMetricsCardRangeSelectionEnabled, true);
       store.overrideSelector(
         selectors.getCurrentRouteRunSelection,
         new Map([
           ['run1', true],
           ['run2', true],
         ])
+      );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2'])
       );
 
       store.overrideSelector(getMetricsLinkedTimeSelection, {
@@ -3016,10 +3348,10 @@ describe('scalar card', () => {
       const data =
         scalarCardDataTable.componentInstance.getTimeSelectionTableData();
 
-      expect(data[0].START_STEP).toEqual(1);
-      expect(data[1].START_STEP).toEqual(3);
-      expect(data[0].END_STEP).toEqual(20);
-      expect(data[1].END_STEP).toEqual(25);
+      expect(data[0].startStep).toEqual(1);
+      expect(data[1].startStep).toEqual(3);
+      expect(data[0].endStep).toEqual(20);
+      expect(data[1].endStep).toEqual(25);
     }));
 
     it('selects largest points when time selection startStep is greater than any points step', fakeAsync(() => {
@@ -3049,6 +3381,10 @@ describe('scalar card', () => {
           ['run2', true],
         ])
       );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2'])
+      );
 
       store.overrideSelector(getMetricsLinkedTimeSelection, {
         start: {step: 100},
@@ -3064,8 +3400,8 @@ describe('scalar card', () => {
       const data =
         scalarCardDataTable.componentInstance.getTimeSelectionTableData();
 
-      expect(data[0].STEP).toEqual(35);
-      expect(data[1].STEP).toEqual(50);
+      expect(data[0].step).toEqual(35);
+      expect(data[1].step).toEqual(50);
     }));
 
     it('selects smallest points when time selection startStep is less than any points step', fakeAsync(() => {
@@ -3095,6 +3431,10 @@ describe('scalar card', () => {
           ['run2', true],
         ])
       );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2'])
+      );
       store.overrideSelector(getMetricsLinkedTimeSelection, {
         start: {step: 1},
         end: null,
@@ -3109,8 +3449,8 @@ describe('scalar card', () => {
       const data =
         scalarCardDataTable.componentInstance.getTimeSelectionTableData();
 
-      expect(data[0].STEP).toEqual(10);
-      expect(data[1].STEP).toEqual(8);
+      expect(data[0].step).toEqual(10);
+      expect(data[1].step).toEqual(8);
     }));
 
     it('renders alias', fakeAsync(() => {
@@ -3139,6 +3479,10 @@ describe('scalar card', () => {
           ['run1', true],
           ['run2', true],
         ])
+      );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2'])
       );
       store.overrideSelector(selectors.getExperimentIdToExperimentAliasMap, {
         eid1: {aliasText: 'test alias 1', aliasNumber: 100},
@@ -3169,8 +3513,8 @@ describe('scalar card', () => {
 
       const data =
         scalarCardDataTable.componentInstance.getTimeSelectionTableData();
-      expect(data[0].RUN).toEqual('100 test alias 1/Run1 name');
-      expect(data[1].RUN).toEqual('200 test alias 2/Run2 name');
+      expect(data[0].run).toEqual('100 test alias 1/Run1 name');
+      expect(data[1].run).toEqual('200 test alias 2/Run2 name');
     }));
 
     it('edits smoothed value when smoothed is enabled', fakeAsync(() => {
@@ -3194,6 +3538,10 @@ describe('scalar card', () => {
         selectors.getCurrentRouteRunSelection,
         new Map([['run1', true]])
       );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1'])
+      );
       store.overrideSelector(getMetricsLinkedTimeSelection, {
         start: {step: 20},
         end: null,
@@ -3212,7 +3560,7 @@ describe('scalar card', () => {
       ).toBeGreaterThanOrEqual(0);
       expect(
         scalarCardDataTable.componentInstance.getTimeSelectionTableData()[0]
-          .SMOOTHED
+          .smoothed
       ).toBe(6.000000000000001);
     }));
 
@@ -3237,6 +3585,10 @@ describe('scalar card', () => {
           ['run3', true],
         ])
       );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2', 'run3'])
+      );
 
       store.overrideSelector(getMetricsLinkedTimeSelection, {
         start: {step: 1},
@@ -3248,7 +3600,7 @@ describe('scalar card', () => {
         By.directive(ScalarCardDataTable)
       );
       scalarCardDataTable.componentInstance.sortingInfo = {
-        header: ColumnHeaderType.VALUE,
+        name: 'value',
         order: SortingOrder.ASCENDING,
       };
       fixture.detectChanges();
@@ -3256,9 +3608,9 @@ describe('scalar card', () => {
       const data =
         scalarCardDataTable.componentInstance.getTimeSelectionTableData();
 
-      expect(data[0].RUN).toEqual('run2');
-      expect(data[1].RUN).toEqual('run1');
-      expect(data[2].RUN).toEqual('run3');
+      expect(data[0].run).toEqual('run2');
+      expect(data[1].run).toEqual('run1');
+      expect(data[2].run).toEqual('run3');
     }));
 
     it('orders data descending', fakeAsync(() => {
@@ -3282,6 +3634,10 @@ describe('scalar card', () => {
           ['run3', true],
         ])
       );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2', 'run3'])
+      );
 
       store.overrideSelector(getMetricsLinkedTimeSelection, {
         start: {step: 1},
@@ -3293,7 +3649,7 @@ describe('scalar card', () => {
         By.directive(ScalarCardDataTable)
       );
       scalarCardDataTable.componentInstance.sortingInfo = {
-        header: ColumnHeaderType.VALUE,
+        name: 'value',
         order: SortingOrder.DESCENDING,
       };
       fixture.detectChanges();
@@ -3301,9 +3657,9 @@ describe('scalar card', () => {
       const data =
         scalarCardDataTable.componentInstance.getTimeSelectionTableData();
 
-      expect(data[0].RUN).toEqual('run3');
-      expect(data[1].RUN).toEqual('run1');
-      expect(data[2].RUN).toEqual('run2');
+      expect(data[0].run).toEqual('run3');
+      expect(data[1].run).toEqual('run1');
+      expect(data[2].run).toEqual('run2');
     }));
 
     it('Correctly orders NaNs', fakeAsync(() => {
@@ -3335,6 +3691,10 @@ describe('scalar card', () => {
           ['run7', true],
         ])
       );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2', 'run3', 'run4', 'run5', 'run6', 'run7'])
+      );
 
       store.overrideSelector(getMetricsLinkedTimeSelection, {
         start: {step: 1},
@@ -3346,7 +3706,7 @@ describe('scalar card', () => {
         By.directive(ScalarCardDataTable)
       );
       scalarCardDataTable.componentInstance.sortingInfo = {
-        header: ColumnHeaderType.VALUE,
+        name: 'value',
         order: SortingOrder.DESCENDING,
       };
       fixture.detectChanges();
@@ -3354,13 +3714,13 @@ describe('scalar card', () => {
       const data =
         scalarCardDataTable.componentInstance.getTimeSelectionTableData();
 
-      expect(data[0].RUN).toEqual('run3');
-      expect(data[1].RUN).toEqual('run2');
-      expect(data[2].RUN).toEqual('run1');
-      expect(data[3].RUN).toEqual('run4');
-      expect(data[4].RUN).toEqual('run5');
-      expect(data[5].RUN).toEqual('run6');
-      expect(data[6].RUN).toEqual('run7');
+      expect(data[0].run).toEqual('run3');
+      expect(data[1].run).toEqual('run2');
+      expect(data[2].run).toEqual('run1');
+      expect(data[3].run).toEqual('run4');
+      expect(data[4].run).toEqual('run5');
+      expect(data[5].run).toEqual('run6');
+      expect(data[6].run).toEqual('run7');
     }));
 
     it('Sorts RUNS column by displayName', fakeAsync(() => {
@@ -3393,6 +3753,11 @@ describe('scalar card', () => {
         ])
       );
 
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2', 'run3', 'run4', 'run5', 'run6', 'run7'])
+      );
+
       store.overrideSelector(getMetricsLinkedTimeSelection, {
         start: {step: 1},
         end: null,
@@ -3403,7 +3768,7 @@ describe('scalar card', () => {
         By.directive(ScalarCardDataTable)
       );
       scalarCardDataTable.componentInstance.sortingInfo = {
-        header: ColumnHeaderType.RUN,
+        name: 'run',
         order: SortingOrder.ASCENDING,
       };
       scalarCardDataTable.componentInstance.chartMetadataMap.run1.alias = {
@@ -3439,26 +3804,113 @@ describe('scalar card', () => {
       const data =
         scalarCardDataTable.componentInstance.getTimeSelectionTableData();
 
-      expect(data[0].RUN).toEqual('5 g/run1');
-      expect(data[1].RUN).toEqual('6 f/run2');
-      expect(data[2].RUN).toEqual('7 e/run3');
-      expect(data[3].RUN).toEqual('4 d/run4');
-      expect(data[4].RUN).toEqual('2 b/run5');
-      expect(data[5].RUN).toEqual('3 c/run6');
-      expect(data[6].RUN).toEqual('1 a/run7');
+      expect(data[0].run).toEqual('5 g/run1');
+      expect(data[1].run).toEqual('6 f/run2');
+      expect(data[2].run).toEqual('7 e/run3');
+      expect(data[3].run).toEqual('4 d/run4');
+      expect(data[4].run).toEqual('2 b/run5');
+      expect(data[5].run).toEqual('3 c/run6');
+      expect(data[6].run).toEqual('1 a/run7');
     }));
+
+    describe('while integrated with hparams in timeseries', () => {
+      beforeEach(() => {
+        const runToSeries = {
+          run1: [{wallTime: 1, value: 1, step: 1}],
+          run2: [{wallTime: 1, value: 2, step: 1}],
+          run3: [{wallTime: 1, value: 3, step: 1}],
+          run4: [{wallTime: 1, value: NaN, step: 1}],
+          run5: [{wallTime: 1, value: 'NaN', step: 1}],
+          run6: [{wallTime: 1, value: null, step: 1}],
+          run7: [{wallTime: 1, value: undefined, step: 1}],
+        };
+        provideMockCardRunToSeriesData(
+          selectSpy,
+          PluginType.SCALARS,
+          'card1',
+          null /* metadataOverride */,
+          runToSeries as any
+        );
+        store.overrideSelector(
+          selectors.getCurrentRouteRunSelection,
+          new Map([
+            ['run1', true],
+            ['run2', true],
+          ])
+        );
+
+        store.overrideSelector(
+          commonSelectors.getFilteredRenderableRunsIds,
+          new Set(['run1'])
+        );
+
+        store.overrideSelector(getMetricsLinkedTimeSelection, {
+          start: {step: 1},
+          end: null,
+        });
+      });
+
+      it('filters runs by hparam when enableHparamsInTimeSeries is true', fakeAsync(() => {
+        store.overrideSelector(selectors.getEnableHparamsInTimeSeries, true);
+
+        const fixture = createComponent('card1');
+        const scalarCardDataTable = fixture.debugElement.query(
+          By.directive(ScalarCardDataTable)
+        );
+
+        const data =
+          scalarCardDataTable.componentInstance.getTimeSelectionTableData();
+        expect(data.length).toEqual(1);
+        expect(data[0].run).toEqual('run1');
+      }));
+
+      it('does not filter runs by hparam when enableHparamsInTimeSeries is false', fakeAsync(() => {
+        store.overrideSelector(selectors.getEnableHparamsInTimeSeries, false);
+
+        const fixture = createComponent('card1');
+        const scalarCardDataTable = fixture.debugElement.query(
+          By.directive(ScalarCardDataTable)
+        );
+
+        const data =
+          scalarCardDataTable.componentInstance.getTimeSelectionTableData();
+        expect(data.length).toEqual(2);
+        expect(data[0].run).toEqual('run1');
+        expect(data[1].run).toEqual('run2');
+      }));
+    });
   });
 
   describe('toggleTableExpanded', () => {
     beforeEach(() => {
       store.overrideSelector(getMetricsLinkedTimeEnabled, true);
       store.overrideSelector(getSingleSelectionHeaders, [
-        {type: ColumnHeaderType.RUN, enabled: true},
-        {type: ColumnHeaderType.SMOOTHED, enabled: true},
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.SMOOTHED,
+          name: 'smoothed',
+          displayName: 'Smoothed',
+          enabled: true,
+        },
       ]);
       store.overrideSelector(getRangeSelectionHeaders, [
-        {type: ColumnHeaderType.RUN, enabled: true},
-        {type: ColumnHeaderType.MIN_VALUE, enabled: true},
+        {
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        },
+        {
+          type: ColumnHeaderType.MIN_VALUE,
+          name: 'minValue',
+          displayName: 'Min Value',
+          enabled: true,
+        },
       ]);
 
       const runToSeries = {
@@ -3499,6 +3951,10 @@ describe('scalar card', () => {
           ['run4', true],
         ])
       );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2', 'run3', 'run4'])
+      );
 
       store.overrideSelector(getMetricsLinkedTimeSelection, {
         start: {step: 2},
@@ -3523,6 +3979,10 @@ describe('scalar card', () => {
           ['run3', false],
           ['run4', false],
         ])
+      );
+      store.overrideSelector(
+        commonSelectors.getFilteredRenderableRunsIds,
+        new Set(['run1', 'run2'])
       );
       const fixture = createComponent('card1');
       fixture.detectChanges();
@@ -3826,7 +4286,7 @@ describe('scalar card', () => {
         );
         const fakeEvent = new MouseEvent('mousemove', {
           clientX: 25 + controllerStartPosition,
-          movementX: 1,
+          movementX: -1,
         });
         testController.mouseMove(fakeEvent);
 
@@ -3932,6 +4392,196 @@ describe('scalar card', () => {
 
         expect(dataTableComponent).toBeFalsy();
       }));
+
+      it('emits dataTableColumnEdited with DataTableMode.SINGLE when orderColumns is called while in Single Selection', fakeAsync(() => {
+        store.overrideSelector(getCardStateMap, {
+          card1: {
+            dataMinMax: {
+              minStep: 0,
+              maxStep: 100,
+            },
+          },
+        });
+        store.overrideSelector(getMetricsCardTimeSelection, {
+          start: {step: 1},
+          end: null,
+        });
+        store.overrideSelector(selectors.getMetricsStepSelectorEnabled, true);
+        const fixture = createComponent('card1');
+        fixture.detectChanges();
+        const scalarCardDataTable = fixture.debugElement.query(
+          By.directive(ScalarCardDataTable)
+        );
+
+        const headers = [
+          {
+            type: ColumnHeaderType.RUN,
+            name: 'run',
+            displayName: 'Run',
+            enabled: true,
+          },
+          {
+            type: ColumnHeaderType.VALUE,
+            name: 'value',
+            displayName: 'Value',
+            enabled: true,
+          },
+        ];
+        scalarCardDataTable.componentInstance.orderColumns(headers);
+
+        expect(dispatchedActions).toEqual([
+          dataTableColumnEdited({
+            headers,
+            dataTableMode: DataTableMode.SINGLE,
+          }),
+        ]);
+      }));
+
+      it('emits dataTableColumnEdited with DataTableMode.RANGE when orderColumns is called while in Range Selection', fakeAsync(() => {
+        store.overrideSelector(getCardStateMap, {
+          card1: {
+            dataMinMax: {
+              minStep: 0,
+              maxStep: 100,
+            },
+          },
+        });
+        store.overrideSelector(getMetricsCardTimeSelection, {
+          start: {step: 1},
+          end: {step: 20},
+        });
+        store.overrideSelector(selectors.getMetricsStepSelectorEnabled, true);
+        const fixture = createComponent('card1');
+        fixture.detectChanges();
+        const scalarCardDataTable = fixture.debugElement.query(
+          By.directive(ScalarCardDataTable)
+        );
+
+        const headers = [
+          {
+            type: ColumnHeaderType.RUN,
+            name: 'run',
+            displayName: 'Run',
+            enabled: true,
+          },
+          {
+            type: ColumnHeaderType.VALUE,
+            name: 'value',
+            displayName: 'Value',
+            enabled: true,
+          },
+        ];
+        scalarCardDataTable.componentInstance.orderColumns(headers);
+
+        expect(dispatchedActions).toEqual([
+          dataTableColumnEdited({
+            headers,
+            dataTableMode: DataTableMode.RANGE,
+          }),
+        ]);
+      }));
+
+      it('emits dataTableColumnToggled when onRemoveColumn is called with range selection disabled', fakeAsync(() => {
+        store.overrideSelector(getSingleSelectionHeaders, [
+          {
+            type: ColumnHeaderType.RUN,
+            name: 'run',
+            displayName: 'Run',
+            enabled: true,
+          },
+          {
+            type: ColumnHeaderType.VALUE,
+            name: 'value',
+            displayName: 'Value',
+            enabled: false,
+          },
+        ]);
+        store.overrideSelector(getCardStateMap, {
+          card1: {
+            rangeSelectionOverride: CardFeatureOverride.OVERRIDE_AS_DISABLED,
+          },
+        });
+        const fixture = createComponent('card1');
+        fixture.detectChanges();
+
+        fixture.componentInstance.onRemoveColumn({
+          type: ColumnHeaderType.RUN,
+          name: 'run',
+          displayName: 'Run',
+          enabled: true,
+        });
+
+        expect(dispatchedActions).toEqual([
+          dataTableColumnToggled({
+            cardId: 'card1',
+            header: {
+              type: ColumnHeaderType.RUN,
+              name: 'run',
+              displayName: 'Run',
+              enabled: true,
+            },
+          }),
+        ]);
+      }));
+
+      it('emits dataTableColumnToggled when onRemoveColumn is called with range selection enabled', fakeAsync(() => {
+        store.overrideSelector(getRangeSelectionHeaders, [
+          {
+            type: ColumnHeaderType.RUN,
+            name: 'run',
+            displayName: 'Run',
+            enabled: true,
+          },
+          {
+            type: ColumnHeaderType.MIN_VALUE,
+            name: 'minValue',
+            displayName: 'Min Value',
+            enabled: true,
+          },
+        ]);
+        store.overrideSelector(getCardStateMap, {
+          card1: {
+            rangeSelectionOverride: CardFeatureOverride.OVERRIDE_AS_ENABLED,
+          },
+        });
+        const fixture = createComponent('card1');
+        fixture.detectChanges();
+
+        fixture.componentInstance.onRemoveColumn({
+          type: ColumnHeaderType.MIN_VALUE,
+          name: 'minValue',
+          displayName: 'Min Value',
+          enabled: true,
+        });
+
+        expect(dispatchedActions).toEqual([
+          dataTableColumnToggled({
+            cardId: 'card1',
+            header: {
+              type: ColumnHeaderType.MIN_VALUE,
+              name: 'minValue',
+              displayName: 'Min Value',
+              enabled: true,
+            },
+          }),
+        ]);
+      }));
     });
   });
+
+  it('renders userViewBox', fakeAsync(() => {
+    store.overrideSelector(selectors.getMetricsCardUserViewBox, {
+      x: [0, 1],
+      y: [11, 22],
+    });
+    const fixture = createComponent('card1');
+    fixture.detectChanges();
+
+    const lineChartEl = fixture.debugElement.query(Selector.LINE_CHART);
+    expect(lineChartEl).toBeTruthy();
+    expect(lineChartEl.componentInstance.userViewBox).toEqual({
+      x: [0, 1],
+      y: [11, 22],
+    });
+  }));
 });

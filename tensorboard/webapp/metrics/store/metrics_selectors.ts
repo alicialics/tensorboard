@@ -29,13 +29,11 @@ import {
   TooltipSort,
   XAxisType,
 } from '../types';
-import {
-  ColumnHeader,
-  MinMaxStep,
-} from '../views/card_renderer/scalar_card_types';
+import {MinMaxStep} from '../views/card_renderer/scalar_card_types';
 import {formatTimeSelection} from '../views/card_renderer/utils';
 import * as storeUtils from './metrics_store_internal_utils';
 import {
+  cardRangeSelectionEnabled,
   getCardSelectionStateToBoolean,
   getMinMaxStepFromCardState,
 } from './metrics_store_internal_utils';
@@ -49,6 +47,9 @@ import {
   RunToSeries,
   TagMetadata,
 } from './metrics_types';
+import {ColumnHeader, DataTableMode} from '../../widgets/data_table/types';
+import {Extent} from '../../widgets/line_chart_v2/lib/public_types';
+import {memoize} from '../../util/memoize';
 
 const selectMetricsState =
   createFeatureSelector<MetricsState>(METRICS_FEATURE_KEY);
@@ -112,20 +113,30 @@ export const getCardLoadState = createSelector(
   }
 );
 
+export const getLoadableTimeSeries = memoize((cardMetadata: CardMetadata) => {
+  return createSelector(
+    (state: MetricsState): MetricsState => state,
+    (state: MetricsState): DeepReadonly<RunToSeries> | null => {
+      const {plugin, tag, sample} = cardMetadata;
+      const loadable = storeUtils.getTimeSeriesLoadable(
+        state.timeSeriesData,
+        plugin,
+        tag,
+        sample
+      );
+      return loadable ? loadable.runToSeries : null;
+    }
+  );
+});
+
 export const getCardTimeSeries = createSelector(
   selectMetricsState,
   (state: MetricsState, cardId: CardId): DeepReadonly<RunToSeries> | null => {
     if (!state.cardMetadataMap.hasOwnProperty(cardId)) {
       return null;
     }
-    const {plugin, tag, sample} = state.cardMetadataMap[cardId];
-    const loadable = storeUtils.getTimeSeriesLoadable(
-      state.timeSeriesData,
-      plugin,
-      tag,
-      sample
-    );
-    return loadable ? loadable.runToSeries : null;
+
+    return getLoadableTimeSeries(state.cardMetadataMap[cardId])(state);
   }
 );
 
@@ -406,20 +417,6 @@ export const getMetricsStepMinMax = createSelector(
   }
 );
 
-export const getSingleSelectionHeaders = createSelector(
-  selectMetricsState,
-  (state: MetricsState): ColumnHeader[] => {
-    return state.singleSelectionHeaders;
-  }
-);
-
-export const getRangeSelectionHeaders = createSelector(
-  selectMetricsState,
-  (state: MetricsState): ColumnHeader[] => {
-    return state.rangeSelectionHeaders;
-  }
-);
-
 /**
  * Returns value of the linked time set by user. When linked time selection is never
  * set, it returns the default value which is derived from the timeseries data
@@ -438,7 +435,7 @@ export const getMetricsLinkedTimeSelectionSetting = createSelector(
     if (!state.linkedTimeSelection) {
       return {
         start: {
-          step: stepMinMax.min,
+          step: stepMinMax.max,
         },
         end: null,
       };
@@ -484,34 +481,35 @@ export const isMetricsSlideoutMenuOpen = createSelector(
   (state): boolean => state.isSlideoutMenuOpen
 );
 
+export const getTableEditorSelectedTab = createSelector(
+  selectMetricsState,
+  (state): DataTableMode => state.tableEditorSelectedTab
+);
+
 export const getMetricsCardRangeSelectionEnabled = createSelector(
+  getCardStateMap,
   getMetricsRangeSelectionEnabled,
   getMetricsLinkedTimeEnabled,
-  getCardStateMap,
   (
+    cardStateMap: CardStateMap,
     globalRangeSelectionEnabled: boolean,
     linkedTimeEnabled: boolean,
-    cardStateMap: CardStateMap,
     cardId: CardId
-  ) => {
-    if (linkedTimeEnabled) {
-      return globalRangeSelectionEnabled;
-    }
-
-    const cardState = cardStateMap[cardId];
-    return getCardSelectionStateToBoolean(
-      cardState?.rangeSelectionOverride,
-      globalRangeSelectionEnabled
-    );
-  }
+  ) =>
+    cardRangeSelectionEnabled(
+      cardStateMap,
+      globalRangeSelectionEnabled,
+      linkedTimeEnabled,
+      cardId
+    )
 );
 
 /**
  * Gets the min and max step visible in a metrics card.
  * This value can either be the data min max or be overridden
- * by a user min max.
+ * by min max within userViewBox.
  *
- * Note: userMinMax is not necessarily a subset of dataMinMax.
+ * Note: min max within userViewBox is not necessarily a subset of dataMinMax.
  */
 export const getMetricsCardMinMax = createSelector(
   getCardStateMap,
@@ -528,6 +526,16 @@ export const getMetricsCardDataMinMax = createSelector(
   getCardStateMap,
   (cardStateMap: CardStateMap, cardId: CardId): MinMaxStep | undefined => {
     return cardStateMap[cardId]?.dataMinMax;
+  }
+);
+
+/**
+ * Returns user defined view extent. Null means no zoom in, user box is the same as data extent.
+ */
+export const getMetricsCardUserViewBox = createSelector(
+  getCardStateMap,
+  (cardStateMap: CardStateMap, cardId: CardId): Extent | null => {
+    return cardStateMap[cardId]?.userViewBox ?? null;
   }
 );
 
@@ -582,17 +590,62 @@ export const getMetricsCardTimeSelection = createSelector(
       globalRangeSelectionEnabled
     );
 
-    const startStep = cardState.timeSelection?.start.step ?? minMaxStep.minStep;
-    const endStep = cardState.timeSelection?.end?.step ?? minMaxStep.maxStep;
+    let timeSelection = cardState.timeSelection;
+    if (!timeSelection) {
+      timeSelection = {
+        start: {step: minMaxStep.minStep},
+        end: {step: minMaxStep.maxStep},
+      };
+    }
+    if (rangeSelectionEnabled) {
+      if (!timeSelection.end) {
+        // Enabling range selection from single selection selects the first
+        // step as the start of the range. The previous start step from single
+        // selection is now the end step.
+        timeSelection = {
+          start: {step: minMaxStep.minStep},
+          end: timeSelection.start,
+        };
+      }
+    } else {
+      // Disabling range selection keeps the largest step from the range.
+      timeSelection = {
+        start: timeSelection.end ?? timeSelection.start,
+        end: null,
+      };
+    }
 
-    // The default time selection
     return formatTimeSelection(
-      {
-        start: {step: startStep},
-        end: {step: endStep},
-      },
+      timeSelection,
       minMaxStep,
       rangeSelectionEnabled
     );
   }
 );
+
+export const getSingleSelectionHeaders = createSelector(
+  selectMetricsState,
+  (state: MetricsState): ColumnHeader[] => {
+    return state.singleSelectionHeaders;
+  }
+);
+
+export const getRangeSelectionHeaders = createSelector(
+  selectMetricsState,
+  (state: MetricsState): ColumnHeader[] => {
+    return state.rangeSelectionHeaders;
+  }
+);
+
+export const getColumnHeadersForCard = memoize((cardId: string) => {
+  return createSelector(
+    (state) => state,
+    getSingleSelectionHeaders,
+    getRangeSelectionHeaders,
+    (state, singleSelectionHeaders, rangeSelectionHeaders) => {
+      return getMetricsCardRangeSelectionEnabled(state, cardId)
+        ? rangeSelectionHeaders
+        : singleSelectionHeaders;
+    }
+  );
+});

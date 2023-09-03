@@ -34,10 +34,8 @@ import {
   TooltipSort,
   XAxisType,
 } from '../types';
-import {
-  ColumnHeader,
-  SortingInfo,
-} from '../views/card_renderer/scalar_card_types';
+import {SortingInfo, DataTableMode} from '../../widgets/data_table/types';
+import {Extent} from '../../widgets/line_chart_v2/lib/public_types';
 
 export const metricsSettingsPaneClosed = createAction(
   '[Metrics] Metrics Settings Pane Closed'
@@ -52,7 +50,13 @@ export const metricsSlideoutMenuToggled = createAction(
 );
 
 export const metricsSlideoutMenuOpened = createAction(
-  '[Metrics] User requested to open the slide out menu'
+  '[Metrics] User requested to open the slide out menu',
+  props<{mode: DataTableMode}>()
+);
+
+export const tableEditorTabChanged = createAction(
+  '[Metrics] User changed the tab in the table editor',
+  props<{tab: DataTableMode}>()
 );
 
 export const metricsSlideoutMenuClosed = createAction(
@@ -211,13 +215,9 @@ export const timeSelectionChanged = createAction(
   props<{cardId?: CardId} & TimeSelectionWithAffordance>()
 );
 
-export const cardMinMaxChanged = createAction(
-  '[Metrics] Card Min Max Changed',
-  props<{cardId: CardId; minMax: MinMaxStep}>()
-);
-
-export const timeSelectionCleared = createAction(
-  '[Metrics] Linked Time Selection Cleared'
+export const cardViewBoxChanged = createAction(
+  '[Metrics] Card User View Box Changed',
+  props<{cardId: CardId; userViewBox: Extent | null}>()
 );
 
 export const linkedTimeToggled = createAction(
@@ -234,20 +234,13 @@ export const sortingDataTable = createAction(
   props<SortingInfo>()
 );
 
-export const dataTableColumnDrag = createAction(
-  '[Metrics] Data table column dragged',
-  props<{
-    newOrder: ColumnHeader[];
-  }>()
-);
-
 export const dataTableColumnEdited = createAction(
   '[Metrics] Data table columns edited in edit menu',
   props<HeaderEditInfo>()
 );
 
 export const dataTableColumnToggled = createAction(
-  '[Metrics] Data table column toggled in edit menu',
+  '[Metrics] Data table column toggled in edit menu or delete button clicked',
   props<HeaderToggleInfo>()
 );
 

@@ -13,8 +13,47 @@ tf_sass_binary(
 )
 
 tf_sass_binary(
+    name = "header_cell_styles",
+    src = "header_cell_component.scss",
+    strict_deps = False,
+    deps = [
+        "//tensorboard/webapp:angular_material_sass_deps",
+        "//tensorboard/webapp/theme",
+    ],
+)
+
+tf_sass_binary(
+    name = "content_cell_styles",
+    src = "content_cell_component.scss",
+    strict_deps = False,
+    deps = [
+        "//tensorboard/webapp:angular_material_sass_deps",
+    ],
+)
+
+tf_sass_binary(
     name = "data_table_header_styles",
     src = "data_table_header_component.scss",
+    strict_deps = False,
+    deps = [
+        "//tensorboard/webapp:angular_material_sass_deps",
+        "//tensorboard/webapp/theme",
+    ],
+)
+
+tf_sass_binary(
+    name = "column_selector_component_styles",
+    src = "column_selector_component.scss",
+    strict_deps = False,
+    deps = [
+        "//tensorboard/webapp:angular_material_sass_deps",
+        "//tensorboard/webapp/theme",
+    ],
+)
+
+tf_sass_binary(
+    name = "filter_dialog_styles",
+    src = "filter_dialog_component.scss",
     strict_deps = False,
     deps = [
         "//tensorboard/webapp:angular_material_sass_deps",
@@ -25,20 +64,34 @@ tf_sass_binary(
 tf_ng_module(
     name = "data_table",
     srcs = [
+        "content_cell_component.ts",
+        "content_row_component.ts",
         "data_table_component.ts",
         "data_table_module.ts",
+        "header_cell_component.ts",
     ],
     assets = [
+        "content_cell_component.ng.html",
         "data_table_component.ng.html",
+        "header_cell_component.ng.html",
+        ":content_cell_styles",
         ":data_table_styles",
+        ":header_cell_styles",
     ],
     deps = [
+        ":column_selector",
         ":data_table_header",
+        ":filter_dialog",
+        ":types",
+        "//tensorboard/webapp/angular:expect_angular_legacy_material_button",
         "//tensorboard/webapp/angular:expect_angular_material_icon",
         "//tensorboard/webapp/metrics/views/card_renderer:scalar_card_types",
+        "//tensorboard/webapp/widgets/custom_modal",
         "//tensorboard/webapp/widgets/line_chart_v2/lib:formatter",
+        "//tensorboard/webapp/widgets/range_input:types",
         "@npm//@angular/common",
         "@npm//@angular/core",
+        "@npm//rxjs",
     ],
 )
 
@@ -53,10 +106,60 @@ tf_ng_module(
         ":data_table_header_styles",
     ],
     deps = [
+        ":types",
         "//tensorboard/webapp/angular:expect_angular_material_icon",
-        "//tensorboard/webapp/metrics/views/card_renderer:scalar_card_types",
         "@npm//@angular/common",
         "@npm//@angular/core",
+    ],
+)
+
+tf_ng_module(
+    name = "column_selector",
+    srcs = [
+        "column_selector_component.ts",
+        "column_selector_module.ts",
+    ],
+    assets = [
+        "column_selector_component.ng.html",
+        ":column_selector_component_styles",
+    ],
+    deps = [
+        ":types",
+        "//tensorboard/webapp/angular:expect_angular_legacy_material_button",
+        "//tensorboard/webapp/angular:expect_angular_legacy_material_input",
+        "//tensorboard/webapp/angular:expect_angular_material_icon",
+        "@npm//@angular/common",
+        "@npm//@angular/core",
+        "@npm//@angular/forms",
+        "@npm//rxjs",
+    ],
+)
+
+tf_ng_module(
+    name = "filter_dialog",
+    srcs = [
+        "filter_dialog_component.ts",
+        "filter_dialog_module.ts",
+    ],
+    assets = [
+        "filter_dialog_component.ng.html",
+        ":filter_dialog_styles",
+    ],
+    deps = [
+        ":types",
+        "//tensorboard/webapp/angular:expect_angular_material_checkbox",
+        "//tensorboard/webapp/widgets/filter_input",
+        "//tensorboard/webapp/widgets/range_input",
+        "//tensorboard/webapp/widgets/range_input:types",
+        "@npm//@angular/common",
+        "@npm//@angular/core",
+    ],
+)
+
+tf_ts_library(
+    name = "types",
+    srcs = [
+        "types.ts",
     ],
 )
 
@@ -64,14 +167,29 @@ tf_ts_library(
     name = "data_table_test",
     testonly = True,
     srcs = [
+        "column_selector_test.ts",
+        "content_cell_component_test.ts",
         "data_table_test.ts",
+        "filter_dialog_test.ts",
+        "header_cell_component_test.ts",
     ],
     deps = [
+        ":column_selector",
         ":data_table",
+        ":filter_dialog",
+        ":types",
+        "//tensorboard/webapp/angular:expect_angular_cdk_testing",
+        "//tensorboard/webapp/angular:expect_angular_cdk_testing_testbed",
         "//tensorboard/webapp/angular:expect_angular_core_testing",
-        "//tensorboard/webapp/angular:expect_angular_material_icon",
-        "//tensorboard/webapp/metrics/views/card_renderer:scalar_card_types",
+        "//tensorboard/webapp/angular:expect_angular_material_checkbox",
+        "//tensorboard/webapp/angular:expect_angular_material_checkbox_testing",
+        "//tensorboard/webapp/angular:expect_angular_platform_browser_animations",
+        "//tensorboard/webapp/testing:mat_icon",
+        "//tensorboard/webapp/widgets/custom_modal",
+        "//tensorboard/webapp/widgets/range_input",
+        "//tensorboard/webapp/widgets/range_input:types",
         "@npm//@angular/core",
+        "@npm//@angular/forms",
         "@npm//@angular/platform-browser",
         "@npm//@types/jasmine",
     ],

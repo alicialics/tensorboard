@@ -25,6 +25,7 @@ import {
   buildOrReturnStateWithPinnedCopy,
   buildOrReturnStateWithUnresolvedImportedPins,
   canCreateNewPins,
+  cardRangeSelectionEnabled,
   createPluginDataWithLoadable,
   createRunToLoadState,
   generateNextCardStepIndex,
@@ -1164,12 +1165,12 @@ describe('metrics store utils', () => {
   });
 
   describe('getMinMaxStepFromCardState', () => {
-    it('returns userMinMax when defined', () => {
+    it('returns userViewBox when defined', () => {
       expect(
         getMinMaxStepFromCardState({
-          userMinMax: {
-            minStep: 10,
-            maxStep: 20,
+          userViewBox: {
+            x: [10, 20],
+            y: [11, 22],
           },
           dataMinMax: {
             minStep: 0,
@@ -1182,7 +1183,43 @@ describe('metrics store utils', () => {
       });
     });
 
-    it('returns dataMinMax when userMinMax is not defined', () => {
+    it('returns minStep lower than maxStep on descending x extent', () => {
+      expect(
+        getMinMaxStepFromCardState({
+          userViewBox: {
+            x: [20, 10],
+            y: [22, 11],
+          },
+          dataMinMax: {
+            minStep: 0,
+            maxStep: 100,
+          },
+        })
+      ).toEqual({
+        minStep: 10,
+        maxStep: 20,
+      });
+    });
+
+    it('returns min max within userViewBox range', () => {
+      expect(
+        getMinMaxStepFromCardState({
+          userViewBox: {
+            x: [11.2, 20.3],
+            y: [11, 22],
+          },
+          dataMinMax: {
+            minStep: 0,
+            maxStep: 100,
+          },
+        })
+      ).toEqual({
+        minStep: 12,
+        maxStep: 20,
+      });
+    });
+
+    it('returns dataMinMax when userViewBox is not defined', () => {
       expect(
         getMinMaxStepFromCardState({
           dataMinMax: {
@@ -1240,6 +1277,88 @@ describe('metrics store utils', () => {
     it('returns global value when selection state is undefined', () => {
       expect(getCardSelectionStateToBoolean(undefined, true)).toBeTrue();
       expect(getCardSelectionStateToBoolean(undefined, false)).toBeFalse();
+    });
+  });
+
+  describe('cardRangeSelectionEnabled', () => {
+    it('returns card specific value when defined', () => {
+      expect(
+        cardRangeSelectionEnabled(
+          {
+            card1: {
+              rangeSelectionOverride: CardFeatureOverride.OVERRIDE_AS_ENABLED,
+            },
+          },
+          false,
+          false,
+          'card1'
+        )
+      ).toBeTrue();
+
+      expect(
+        cardRangeSelectionEnabled(
+          {
+            card1: {
+              rangeSelectionOverride: CardFeatureOverride.OVERRIDE_AS_DISABLED,
+            },
+          },
+          true,
+          false,
+          'card1'
+        )
+      ).toBeFalse();
+    });
+
+    it('returns global value when card specific value is not defined', () => {
+      expect(
+        cardRangeSelectionEnabled(
+          {
+            card1: {},
+          },
+          true,
+          false,
+          'card1'
+        )
+      ).toBeTrue();
+
+      expect(
+        cardRangeSelectionEnabled(
+          {
+            card1: {},
+          },
+          false,
+          false,
+          'card1'
+        )
+      ).toBeFalse();
+    });
+
+    it('returns global value when linked time is enabled', () => {
+      expect(
+        cardRangeSelectionEnabled(
+          {
+            card1: {
+              rangeSelectionOverride: CardFeatureOverride.OVERRIDE_AS_DISABLED,
+            },
+          },
+          true,
+          true,
+          'card1'
+        )
+      ).toBeTrue();
+
+      expect(
+        cardRangeSelectionEnabled(
+          {
+            card1: {
+              rangeSelectionOverride: CardFeatureOverride.OVERRIDE_AS_ENABLED,
+            },
+          },
+          false,
+          true,
+          'card1'
+        )
+      ).toBeFalse();
     });
   });
 });
